@@ -9,75 +9,77 @@
 ###Setting up, formatting and cleaning the relevant data
 
 #Defining the reuired R packages for the full analysis
-
 cran_packages <- c("tidyverse", "stringi", "BiocManager",
               "scales", "RCurl", "cowplot", "rebus", "ggsci",
               "progress", "metap", "doSNOW", "foreach", "scCustomize",
               "Matrix", "ggpubr", "R.utils", "devtools", "remotes")
 
-bioconductor_packages <- c("Seurat", "biomaRt", "AnnotationDbi",
+bioconductor_packages <- c("Seurat", "glmGamPoi", "multtest", "biomaRt", "AnnotationDbi",
               "EnsDb.Hsapiens.v86", "EnhancedVolcano", "graphite", "netgsa",
               "org.Hs.eg.db", "fgsea", "clusterProfiler", "SPIA")
 
-github_packages <- c('satijalab/seurat-wrappers', 'cole-trapnell-lab/monocle3')                            
+github_packages <- c("SeuratWrappers", "monocle3", "presto")
+github_install_names <- c("satijalab/seurat-wrappers", "cole-trapnell-lab/monocle3", "immunogenomics/presto")                            
 
 
 #This function will check if the required packages are installed and if not it installs them
 #NOTE: by defould the function will only check for CRAN packages, so if you want to install bioconductor
 #or github packages you will have to feed those in separately
-install_required_packages = function (CRAN_package_lst, BioC_package_lst == NULL, github_package_lst == NULL) {
-if (isnull(CRAN_package_lst) == FALSE) {
-    for (cran_item in CRAN_package_lst) {
-        if (is.element(cran_item) == FALSE) {
-            message("The package: " cran_item "is not installed. Installing package...")
-            install.packages(cran_item)
-        } esle {
-            messae("The package: " cran_item "is installed. Load the package using the library function.")
+install_required_packages = function (CRAN_package_lst = NULL, BioC_package_lst = NULL, github_package_lst = NULL, github_install_param = NULL) {
+    if (is.null(CRAN_package_lst) == FALSE) {
+        for (cran_item in CRAN_package_lst) {
+            if (is.element(cran_item, installed.packages()) == FALSE) {
+                message("The package: ", cran_item, " is not installed. Installing package...")
+                install.packages(cran_item)
+            } else {
+                message("The package: ", cran_item, " is installed. Load the package using the library function.")
+            }
         }
-    }
 
-} else {
-    message("No CRAN packages were requested.")
-}
+    } else {
+        message("No CRAN packages were requested.")
+    }
       
-if (isnull(BioC_package_lst) == FALSE) {
-    for (bioc_item in Bioc_package_lst) {
-        if (is.element(bioc_item) == FALSE) {
-            message("The package: " bioc_item "is not installed. Installing package...")
-            BiocManager::install(bioc_item)
-        } esle {
-            messae("The package: " bioc_item "is installed. Load the package using the library function.")
+    if (is.null(BioC_package_lst) == FALSE) {
+        for (bioc_item in BioC_package_lst) {
+            if (is.element(bioc_item, installed.packages()) == FALSE) {
+                message("The package: ", bioc_item, " is not installed. Installing package...")
+                BiocManager::install(bioc_item)
+            } else {
+                message("The package: ", bioc_item, " is installed. Load the package using the library function.")
+            }
         }
+
+    } else {
+        message("\n", "No Bioconductor packages were requested.")
+
     }
 
-} else {
-    messgae("No Bioconductor packages were requested.")
-
-}
-
-if (isnull(github_packages_) == FALSE) {
-    for (github_item in Bioc_package_lst) {
-        if (is.element(github_item) == FALSE) {
-            message("The package: " github_item "is not installed. Installing package...")
-            devtools::install_github(github_item)
-        } esle {
-            messae("The package: " github_item "is installed. Load the package using the library function.")
+    if (is.null(github_package_lst) == FALSE) {
+        for (github_item in github_package_lst) {
+            if (is.element(github_item, installed.packages()) == FALSE) {
+                message("The package: ", github_item, " is not installed. Installing package...")
+                for (install_param in github_install_param) {
+                    devtools::install_github(install_param)
+                }
+            } else {
+                message("The package: ", github_item, " is installed. Load the package using the library function.")
+            }
         }
-    }
 
-} else {
-    message("No github packages were requested.")
-}
+    } else {
+        message("\n", "No github packages were requested.")
+    }
    
 }
-
+install_required_packages(CRAN_package_lst = cran_packages, BioC_package_lst = bioconductor_packages, github_package_lst = github_packages, github_install_param = github_install_names)
 
 #Used library packages
-packages <- c("tidyverse", "stringi", "BiocManager", "Seurat", "biomaRt", "AnnotationDbi",
+packages <- c("tidyverse", "stringi", "BiocManager", "Seurat", "glmGamPoi", "biomaRt", "AnnotationDbi",
               "scales", "EnsDb.Hsapiens.v86", "RCurl", "cowplot", "rebus", "ggsci",
               "EnhancedVolcano", "progress", "metap", "doSNOW", "foreach", "scCustomize", "stringi",
               "scales", "ggsci", "graphite", "netgsa", "org.Hs.eg.db", "fgsea", "clusterProfiler",
-              "scCustomize", "Matrix", "ggpubr", "SeuratWrappers")
+              "scCustomize", "Matrix", "ggpubr", "SeuratWrappers", "presto", "multtest")
 lapply(packages, library, character.only = TRUE)
 
 
@@ -486,7 +488,7 @@ rm(mt_pd)
 
 
 #visualizing the nCount numbers/treatment groups and save it
-library(scales) #helps to remove scientific notation form the axises
+#The scales package helps to remove scientific notation form the axises
 nCount_p <- ggplot(CTC_meta.data_clean,
                    aes(x = nCount_RNA_seq, fill = RespGroup))+
     geom_density(alpha = 0.2) +
@@ -589,6 +591,8 @@ filt_CTC.obj <- subset(CTC_reseq.obj,
 
 
 
+Lu_only_samples <- rownames(dplyr::filter(filt_CTC.obj@meta.data, Treatment == "L"))
+filt_CTC.obj <- subset(filt_CTC.obj, cells = Lu_only_samples, invert = TRUE)
 
 ##Another advised step is to remove genes with 0 counts across all cells
 
@@ -934,12 +938,12 @@ ggsave(filename = paste0("Principal component weights", script_version, ".png"),
 rm(PC_weight_p, PC_weight_p2)
 
 #Running dimensionality reduction (trying both UMAP and tSNE :) )
-sct_CTC.obj <- RunUMAP(sct_CTC.obj, dims = 1:20, reduction = "pca", verbose = FALSE)
-sct_CTC.obj <- RunTSNE(sct_CTC.obj, dims = 1:20, reduction = "pca", perplexity = 5)
+sct_CTC.obj <- RunUMAP(sct_CTC.obj, dims = 1:40, reduction = "pca", verbose = FALSE)
+sct_CTC.obj <- RunTSNE(sct_CTC.obj, dims = 1:40, reduction = "pca", perplexity = 5)
 
 
 #Finding neighbours and clustering
-sct_CTC.obj <- FindNeighbors(sct_CTC.obj, reduction = "pca", dims = 1:20)
+sct_CTC.obj <- FindNeighbors(sct_CTC.obj, reduction = "pca", dims = 1:40)
 sct_CTC.obj <- FindClusters(sct_CTC.obj, resolution = c(0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2))
 
 
@@ -1032,13 +1036,6 @@ grad_col <- pal_locuszoom("default")(7)
 
 UMAP_nF_p <- FeaturePlot(sct_CTC.obj,
                          reduction = "umap",
-                         features = "nFeature_RNA_seq")
-print(UMAP_nF_p)
-
-
-
-UMAP_nF_p <- FeaturePlot(sct_CTC.obj,
-                         reduction = "umap",
                          features = "nFeature_SCT")
 UMAP_nF_p2 <- UMAP_nF_p +
     #scale_color_gradient(low = "lightgrey", high = cluster_colors[7]) +
@@ -1054,12 +1051,6 @@ rm(UMAP_nF_p, UMAP_nF_p2)
 
 
 #overlaying nCount
-UMAP_nC_p <- FeaturePlot(sct_CTC.obj,
-                         reduction = "umap",
-                         features = "nCount_RNA_seq")
-print(UMAP_nC_p)
-rm(UMAP_nC_p)
-
 UMAP_nC_p <- FeaturePlot(sct_CTC.obj,
                          reduction = "umap",
                          features = "nCount_SCT")
@@ -1565,7 +1556,7 @@ geneName_matching_par = function (DE_lst, gene_lst, ID_col, name_col, n_cores = 
                                     current = ">",
                                     clear = FALSE,
                                     width = 100)
-    prog_range <- 1:nrow(DE_lst)
+    prog_range <- seq_len(nrow(DE_lst))
     progress = function(n) {
         progressBar$tick(tokens = list(Progress = prog_range[n]))
     }
@@ -1573,21 +1564,21 @@ geneName_matching_par = function (DE_lst, gene_lst, ID_col, name_col, n_cores = 
     opts <- list(progress = progress)
     
     cores <- n_cores
-    clust <- makeCluster(cores)
+    clust <- parallel::makeCluster(cores)
     doSNOW::registerDoSNOW(cl = clust)
     
     position <- c()
     out <- c()
-    geneNames <- foreach(i = 1:nrow(DE_lst), .options.snow = opts, .combine = c) %dopar% {
+    geneNames <- foreach::foreach(i = seq_len(nrow(DE_lst)), .options.snow = opts, .combine = c) %dopar% {
         position <- grep(rownames(DE_lst)[i], gene_lst[, ID_col])
         out[i] <- gene_lst[, name_col][position]
     }
     
-    stopCluster(cl = clust)
+    parallel::stopCluster(cl = clust)
     
     out_lst <- cbind(DE_lst, geneNames)
     original_name <- deparse(substitute(DE_lst))
-    output_name <- paste0(original_name, "geneNames")
+    output_name <- paste0(original_name, "_", "geneNames")
     assign(output_name, out_lst, envir = .GlobalEnv)
     message("The gene name matched DE_cluster_0v1 list was assigned to a new object named:", "\n", output_name)
 }
@@ -1926,14 +1917,14 @@ export_Seurat_for_scVelo = function(seurat_object, gene_IDs_names_df, ENSEMBL_ID
     ##NOTE: the saved data will be the already processed sctransformed data, used for the clustering and DE, GSEA analysis
     
     #I will simply save the full RNA count matrix
-    gene_count_matrix_IDs <- GetAssayData(seurat_object, assay = "SCT", slot = "counts")
-    writeMM(gene_count_matrix_IDs, file = paste0(script_version, "/", "Velocity data", "/", "CTC_GeneCountMatrix_IDs_for_scVelo", script_version, ".mtx"))
+    gene_count_matrix_IDs <- Seurat::GetAssayData(seurat_object, assay = "SCT", layer = "counts")
+    Matrix::writeMM(gene_count_matrix_IDs, file = paste0(script_version, "/", "Velocity data", "/", "CTC_GeneCountMatrix_IDs_for_scVelo", script_version, ".mtx"))
     
     #as I'm unsure if the ENSEMBL IDs will be usable for the analysis I will save a trimmed matrix containing the entries with identified gene neames
     #missing_name_IDs <- unif_gene_names$ensembl_gene_id[is.na(unif_gene_names$external_gene_name[rownames(GetAssayData(seurat_object, assay = "SCT", slot = "counts")) %in% unif_gene_names$ensembl_gene_id])]
     missing_name_IDs <- gene_IDs_names_df[, ENSEMBL_ID_col][is.na(gene_IDs_names_df[, gene_names_col][rownames(gene_count_matrix_IDs) %in% gene_IDs_names_df[, ENSEMBL_ID_col]])]
     gene_count_matrix_names <- gene_count_matrix_IDs[!rownames(gene_count_matrix_IDs) %in% missing_name_IDs, ]
-    writeMM(gene_count_matrix_names, file = paste0(script_version, "/", "Velocity data", "/", "CTC_GeneCountMatrix_gNames_for_scVelo", script_version, ".mtx"))
+    Matrix::writeMM(gene_count_matrix_names, file = paste0(script_version, "/", "Velocity data", "/", "CTC_GeneCountMatrix_gNames_for_scVelo", script_version, ".mtx"))
     
     
     ##Save the  dimensionality reduction matrix
@@ -2050,6 +2041,10 @@ GSEA_DE_lst <- FindMarkers(sct_CTC.obj,
 
 #Attaching gene names to the DE genes using the following fucntions
 #This is the parallelized version of the matching function
+#' @export 
+#' @importFrom foreach %dopar%
+    devtools::document()
+
 geneName_matching_par = function (DE_lst, gene_lst, ID_col, name_col, n_cores = 2) {
     progressBar <- progress_bar$new(format = "Progress = (:spin) [:bar] :percent [Elapsed time: :elapsedfull || Estimated time remaining: :eta]",
                                     total = nrow(DE_lst),
@@ -2058,7 +2053,7 @@ geneName_matching_par = function (DE_lst, gene_lst, ID_col, name_col, n_cores = 
                                     current = ">",
                                     clear = FALSE,
                                     width = 100)
-    prog_range <- 1:nrow(DE_lst)
+    prog_range <- seq_len(nrow(DE_lst))
     progress = function(n) {
         progressBar$tick(tokens = list(Progress = prog_range[n]))
     }
@@ -2066,17 +2061,17 @@ geneName_matching_par = function (DE_lst, gene_lst, ID_col, name_col, n_cores = 
     opts <- list(progress = progress)
     
     cores <- n_cores
-    clust <- makeCluster(cores)
+    clust <- parallel::makeCluster(cores)
     doSNOW::registerDoSNOW(cl = clust)
     
     position <- c()
     out <- c()
-    geneNames <- foreach(i = 1:nrow(DE_lst), .options.snow = opts, .combine = c) %dopar% {
+    geneNames <- foreach::foreach(i = seq_len(nrow(DE_lst)), .options.snow = opts, .combine = c) %dopar% {
         position <- grep(rownames(DE_lst)[i], gene_lst[, ID_col])
         out[i] <- gene_lst[, name_col][position]
     }
     
-    stopCluster(cl = clust)
+    parallel::stopCluster(cl = clust)
     
     out_lst <- cbind(DE_lst, geneNames)
     original_name <- deparse(substitute(DE_lst))
