@@ -8,21 +8,18 @@
 
 
 
-
-#==================================================================================================================================
-
-### Setting up, formatting and cleaning the relevant data
+#################################################################  Setting up, formatting and cleaning the relevant data  ##################################################################
 
 
 # Defining the required R packages for the full analysis
 cran_packages <- c("tidyverse", "stringi", "BiocManager",
               "scales", "RCurl", "cowplot", "rebus", "ggsci",
               "progress", "metap", "doSNOW", "foreach", "scCustomize",
-              "Matrix", "ggpubr", "R.utils", "devtools", "remotes")
+              "Matrix", "ggpubr", "R.utils", "devtools", "remotes", "RMTstat")
 
 bioconductor_packages <- c("Seurat", "glmGamPoi", "multtest", "biomaRt", "AnnotationDbi",
               "EnsDb.Hsapiens.v86", "EnhancedVolcano", "graphite", "netgsa",
-              "org.Hs.eg.db", "fgsea", "clusterProfiler", "SPIA")
+              "org.Hs.eg.db", "fgsea", "clusterProfiler", "SPIA", "PCAtools")
 
 github_packages <- c("SeuratWrappers", "monocle3", "presto")
 github_install_names <- c("satijalab/seurat-wrappers", "cole-trapnell-lab/monocle3", "immunogenomics/presto")                            
@@ -83,13 +80,13 @@ install_required_packages(CRAN_package_lst = cran_packages, BioC_package_lst = b
 # Used library packages
 packages <- c("tidyverse", "stringi", "BiocManager", "Seurat", "glmGamPoi", "biomaRt", "AnnotationDbi", "scales", "EnsDb.Hsapiens.v86",
                 "RCurl", "cowplot", "rebus", "ggsci", "EnhancedVolcano", "progress", "metap", "doSNOW", "foreach", "scCustomize", "graphite",
-                    "org.Hs.eg.db", "fgsea", "clusterProfiler", "ggpubr", "SeuratWrappers", "presto", "multtest")
+                    "org.Hs.eg.db", "fgsea", "clusterProfiler", "ggpubr", "SeuratWrappers", "multtest", "PCAtools", "RMTstat")
 
 lapply(packages, library, character.only = TRUE)
 
 
 # Setting wd + path and listing the read output tables
-setwd("/Users/ramasz/Coding/Gabi_R")
+setwd("C:/Work/DKFZ/Alpha_project_data_anal/Reseq")
 bam_files <- paste0(getwd(), "/", "Re-seq_bam")
 
 
@@ -202,53 +199,58 @@ rownames(GeneCountTable) <- geneIDs
 head(GeneCountTable)
 
 
-# Retrieving gene names using the ensembl IDs
-listEnsembl() #lists the available biomart keynames, here I need "gene"
-ensembl <- useEnsembl(biomart = "genes") #creates an ensembl object needed for the database connection
-datasets <- listDatasets(ensembl) #lists the organism based datasest from which we need to chose one for the db connection
-ensembl_connection <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl") #this connects the database and the dataset for the search query
-attributes <- listAttributes(ensembl_connection) #needed for the query, describes the desired info like gene names
-filters <- listFilters(ensembl_connection) # needed for the query, defined by upon which data we search for(?) like here the ensemblIds
+# Load the unified gene list if available, otherwie build it from scratch
+if (file.exists("Unified_gene_names_table.csv") && !exists("unified_gene_names_table", where = .GlobalEnv)) {
+    unif_gene_names <- read.csv(file = "Unified_gene_names_table.csv")
+    message("The unified gene names table was found and loaded as: ", deparse(substitute(unified_gene_names_table)))
+} else {
+    
+    # Retrieving gene names using the ensembl IDs
+    biomaRt::listEnsembl() #lists the available biomart keynames, here I need "gene"
+    biomaRt::ensembl <- useEnsembl(biomart = "genes") #creates an ensembl object needed for the database connection
+    datasets <- listDatasets(ensembl) #lists the organism based datasest from which we need to chose one for the db connection
+    ensembl_connection <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl") #this connects the database and the dataset for the search query
+    attributes <- listAttributes(ensembl_connection) #needed for the query, describes the desired info like gene names
+    filters <- listFilters(ensembl_connection) # needed for the query, defined by upon which data we search for(?) like here the ensemblIds
+    
+    gene_names <- getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
+                        filters = "ensembl_gene_id",
+                        values = geneIDs,
+                        mart = ensembl_connection)
+    
+    
+    
+    # If you run into missing IDs you can check which ones are missing
+    missingIDs <- geneIDs[geneIDs %in% gene_names$ensembl_gene_id == FALSE]
+    missingNames <- gene_names[stringi::stri_isempty(gene_names$external_gene_name) == TRUE, 1]
+    unif_missing <- c(missingIDs, missingNames)
+    
+    # An alternative method for gene id mapping if the direct query does not work properly
+    # like shorter name list than id list...
+    keytypes(EnsDb.Hsapiens.v86)
+    columns(EnsDb.Hsapiens.v86)
+    
+    gene_names_2 <- mapIds(x = EnsDb.Hsapiens.v86,
+                           keys = unif_missing,
+                           column = "SYMBOL",
+                           keytype = "GENEID")
+    gene_names_2 <- data.frame(names(gene_names_2), gene_names_2)
+    rownames(gene_names_2) <- NULL
+    colnames(gene_names_2) <- colnames(gene_names)
+    clean_gene_names <- gene_names[stringi::stri_isempty(gene_names$external_gene_name) == FALSE, ]
+    unif_gene_names <- rbind(clean_gene_names, gene_names_2)
+    unif_gene_names <- arrange(unif_gene_names, ensembl_gene_id)
+    
+    
+    # Removing unnecessary variables
+    rm(gene_names, gene_names_2, clean_gene_names, missingIDs, missingNames, unif_missing)
+    
+    
+    # Save the unified gene names for later
+    write_csv(x = unif_gene_names, file = "Unified_gene_names_table.csv")
+    
+}
 
-gene_names <- getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
-      filters = "ensembl_gene_id",
-      values = geneIDs,
-      mart = ensembl_connection)
-
-
-
-# If you run into missing IDs you can check which ones are missing
-missingIDs <- geneIDs[geneIDs %in% gene_names$ensembl_gene_id == FALSE]
-missingNames <- gene_names[stringi::stri_isempty(gene_names$external_gene_name) == TRUE, 1]
-unif_missing <- c(missingIDs, missingNames)
-
-# An alternative method for gene id mapping if the direct query does not work properly
-# like shorter name list than id list...
-keytypes(EnsDb.Hsapiens.v86)
-columns(EnsDb.Hsapiens.v86)
-
-gene_names_2 <- mapIds(x = EnsDb.Hsapiens.v86,
-       keys = unif_missing,
-       column = "SYMBOL",
-       keytype = "GENEID")
-gene_names_2 <- data.frame(names(gene_names_2), gene_names_2)
-rownames(gene_names_2) <- NULL
-colnames(gene_names_2) <- colnames(gene_names)
-clean_gene_names <- gene_names[stringi::stri_isempty(gene_names$external_gene_name) == FALSE, ]
-unif_gene_names <- rbind(clean_gene_names, gene_names_2)
-unif_gene_names <- arrange(unif_gene_names, ensembl_gene_id)
-
-
-# Removing unnecessary variables
-rm(gene_names, gene_names_2, clean_gene_names, missingIDs, missingNames, unif_missing)
-
-
-# Save the unified gene names for later
-write_csv(x = unif_gene_names, file = "Unified_gene_names_table.csv")
-
-
-# Load the unified gene names table if not loaded yet
-read.csv(file = "Unified_gene_names_table.csv")
 
 # Re-ordering the GeneCountTable (GCT) by rows to match the re-ordered unif_gene_names df (by ensembl IDs)
 # Removing the geneID column to allow ordering by sample (column) name and ordering the counts
@@ -284,7 +286,6 @@ if (file.exists("Re-seq_sample_extended_fixed_metadata_with_markers.csv")) {
     metad <- mutate(metad, patientID = patientID)
     metadata <- metad[order(metad$patientID), ]
     rm(metad)
-    write_csv(metadata, "Reseq-sample_metadata.csv")
 
 
     # Sub-setting sample codes for additional entries to the metadata df
@@ -328,16 +329,17 @@ if (file.exists("Re-seq_sample_extended_fixed_metadata_with_markers.csv")) {
 
 }
 
-#==================================================================================================================================
+#################################################################   End Section  ##################################################################
 
 
 
 
 
 
-#==================================================================================================================================
+#################################################################   Creating the seurat object and prepping for the data analysis  ##################################################################
 
-### Creating the seurat object and prepping for the data analysis (for this I need a count table and a prepped metadata dataframe)
+
+# NOTE (for this I need a count table and a prepped metadata dataframe)
 
 
 
@@ -383,16 +385,14 @@ saveRDS(object = CTC_reseq.obj, file = paste0(getwd(), "/", script_version, "/",
 # Following the creation of the seurat object remove some not needed objects to save memory
 rm(meta, GCT)
 
-#==================================================================================================================================
+#################################################################   End Section  ##################################################################
 
 
 
 
 
 
-#==================================================================================================================================
-
-### Quality control
+#################################################################   Quality control  ##################################################################
 
 
 # Load the original CTC Seurat object if not loaded yet
@@ -430,129 +430,141 @@ CTC_meta.data_clean <- mutate(CTC_meta.data_clean, Cell_names = rownames(CTC_met
 rm(CTC_meta.data)
 
 
-# Visualize the cell numbers / resistance group and save it
-cn_p <- ggplot(CTC_meta.data_clean,
-               aes(x = RespGroup, fill = RespGroup)) +
-    geom_bar(color = "black") +
-    geom_text(aes(label = after_stat(count)), stat = "count", position = position_dodge(width = 0.9), vjust = -0.5) + #thx Bing
-    scale_fill_tron() +
-    labs(x = "Responder groups", y = "Cell numbers", fill = "Response groups", color = "Response groups") +
-    ggtitle("Cell numbers after sequencing") +
-    guides(fill = guide_legend(title = "Response groups")) +
-    theme_classic() +
-    theme(plot.title = element_text(hjust = 0.5))
-print(cn_p)
-
-ggsave(filename = paste0("Cell numbers", script_version, ".png"), plot = cn_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(cn_p)
-
-
-# Visualizing the mt.percent across cells using density plot and save it
-mt_pd <- ggplot(CTC_meta.data_clean,
-                aes(x = mt.percent, fill = RespGroup)) +
-    geom_density(alpha = 0.2) +
-    scale_fill_tron() +
-    labs(x = "MT gene expression percentage", y = "MT gene percent distribution") +
-    theme_classic() +
-    ggtitle("Mitochondrial gene expression") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(mt_pd)
-
-ggsave(filename = paste0("Mitochondrial gene expression", script_version, ".png"), plot = mt_pd,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(mt_pd)
-
-
-# Visualizing the nCount numbers/treatment groups and save it
-# The scales package helps to remove scientific notation form the axises
-nCount_p <- ggplot(CTC_meta.data_clean,
-                   aes(x = nCount_RNA_seq, fill = RespGroup)) +
-    geom_density(alpha = 0.2) +
-    scale_fill_tron() +
-    labs(x = "nCounts", y = expression("log"[10]* " Count density"), fill = "Response group") +
-    scale_x_log10(labels = scales::comma) + 
-    theme_classic() +
-    geom_vline(xintercept = 4000, color = "red") +
-    ggtitle("mRNA count distribution") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(nCount_p)
-
-ggsave(filename = paste0("mRNA count distribution", script_version, ".png"), plot = nCount_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(nCount_p)
-
-
-# Visualizing the nFeature numbers/treatment groups and save it
-nFeature_p <- ggplot(CTC_meta.data_clean,
-               aes(x = nFeature_RNA_seq, fill = RespGroup)) +
-    geom_density(alpha = 0.2) +
-    scale_fill_tron() +
-    labs(x = "nFeatures", y = expression("log"[10]* " Feature density"), fill = "Response group") +
-    scale_x_log10(labels = scales::comma) + 
-    theme_classic() +
-    ggtitle("Gene count distribution") +
-    geom_vline(xintercept = 1000, color = "red") +
-    geom_vline(xintercept = 7000, color = "orange") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(nFeature_p)
-
-ggsave(filename = paste0("Gene count distribution", script_version, ".png"), plot = nFeature_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(nFeature_p)
-
-
-# Cell complexity plotting by checking the nFeature/nCount ratio (the higher the nFeature/nCount
-# the more complex the cells are) and save it
-nFpernC_p <-ggplot(CTC_meta.data_clean,
-               aes(x = nFeature.per.nCount, fill = RespGroup)) +
-    geom_density(alpha = 0.2) +
-    scale_fill_tron() +
-    labs(x = "nFeatures/nCounts", y = expression("log" [10]* " density"), fill = "Response group") +
-    theme_classic() +
-    ggtitle("Cell complexity distribution (nFeature/nCount)") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(nFpernC_p)
-
-ggsave(filename = paste0("Cell complexity distribution", script_version, ".png"), plot = nFpernC_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(nFpernC_p)
-
-
-# nCount vs nGene (a high ratio is better) and save it
-nCvnF_p <- ggplot(data = CTC_meta.data_clean,
-                  aes(x = nCount_RNA_seq, y = nFeature_RNA_seq, color = mt.percent)) +
-    geom_point() + 
-    scale_color_gradient(low = "grey90", high = "red") +
-    scale_fill_tron() +
-    labs(x = "mRNA counts", y = "Gene counts", color = "MT gene expression percentage") +
-    #stat_smooth(method = lm) +
-    scale_x_log10(labels = scales::comma) +
-    scale_y_log10(labels = scales::comma) +
-    geom_hline(yintercept = 1000, linetype = "dashed") +
-    geom_hline(yintercept = 6500, linetype = "dashed") +
-    geom_vline(xintercept = 4000, linetype = "dashed") +
-    theme_classic() +
-    #facet_wrap(facets = ~RespGroup)
-    ggtitle("nCount vs nFeature - QC plot") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(nCvnF_p)
-
-ggsave(filename = paste0("nCount vs nFeature - QC plot", script_version, ".png"), plot = nCvnF_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(nCvnF_p)
+# This function simply runs a block of code, plotting and saving the QC metrics one by one (the only purpose of this is conciseness)
+generate_pre_qc_plots = function(make_plots = TRUE) {
+    if (make_plots == TRUE) {
+        message("Pre-QC plots were requested. Running the plotting code block.")
+        
+        
+        # Visualize the cell numbers / resistance group and save it
+        cn_p <- ggplot(CTC_meta.data_clean,
+                       aes(x = RespGroup, fill = RespGroup)) +
+            geom_bar(color = "black") +
+            geom_text(aes(label = after_stat(count)), stat = "count", position = position_dodge(width = 0.9), vjust = -0.5) + #thx Bing
+            scale_fill_tron() +
+            labs(x = "Responder groups", y = "Cell numbers", fill = "Response groups", color = "Response groups") +
+            ggtitle("Cell numbers after sequencing") +
+            guides(fill = guide_legend(title = "Response groups")) +
+            theme_classic() +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(cn_p)
+        
+        ggsave(filename = paste0("Cell numbers", script_version, ".png"), plot = cn_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(cn_p)
+        
+        
+        # Visualizing the mt.percent across cells using density plot and save it
+        mt_pd <- ggplot(CTC_meta.data_clean,
+                        aes(x = mt.percent, fill = RespGroup)) +
+            geom_density(alpha = 0.2) +
+            scale_fill_tron() +
+            labs(x = "MT gene expression percentage", y = "MT gene percent distribution") +
+            theme_classic() +
+            ggtitle("Mitochondrial gene expression") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(mt_pd)
+        
+        ggsave(filename = paste0("Mitochondrial gene expression", script_version, ".png"), plot = mt_pd,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(mt_pd)
+        
+        
+        # Visualizing the nCount numbers/treatment groups and save it
+        # The scales package helps to remove scientific notation form the axises
+        nCount_p <- ggplot(CTC_meta.data_clean,
+                           aes(x = nCount_RNA_seq, fill = RespGroup)) +
+            geom_density(alpha = 0.2) +
+            scale_fill_tron() +
+            labs(x = "nCounts", y = expression("log"[10]* " Count density"), fill = "Response group") +
+            scale_x_log10(labels = scales::comma) + 
+            theme_classic() +
+            geom_vline(xintercept = 4000, color = "red") +
+            ggtitle("mRNA count distribution") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(nCount_p)
+        
+        ggsave(filename = paste0("mRNA count distribution", script_version, ".png"), plot = nCount_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(nCount_p)
+        
+        
+        # Visualizing the nFeature numbers/treatment groups and save it
+        nFeature_p <- ggplot(CTC_meta.data_clean,
+                             aes(x = nFeature_RNA_seq, fill = RespGroup)) +
+            geom_density(alpha = 0.2) +
+            scale_fill_tron() +
+            labs(x = "nFeatures", y = expression("log"[10]* " Feature density"), fill = "Response group") +
+            scale_x_log10(labels = scales::comma) + 
+            theme_classic() +
+            ggtitle("Gene count distribution") +
+            geom_vline(xintercept = 1000, color = "red") +
+            geom_vline(xintercept = 7000, color = "orange") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(nFeature_p)
+        
+        ggsave(filename = paste0("Gene count distribution", script_version, ".png"), plot = nFeature_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(nFeature_p)
+        
+        
+        # Cell complexity plotting by checking the nFeature/nCount ratio (the higher the nFeature/nCount
+        # the more complex the cells are) and save it
+        nFpernC_p <-ggplot(CTC_meta.data_clean,
+                           aes(x = nFeature.per.nCount, fill = RespGroup)) +
+            geom_density(alpha = 0.2) +
+            scale_fill_tron() +
+            labs(x = "nFeatures/nCounts", y = expression("log" [10]* " density"), fill = "Response group") +
+            theme_classic() +
+            ggtitle("Cell complexity distribution (nFeature/nCount)") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(nFpernC_p)
+        
+        ggsave(filename = paste0("Cell complexity distribution", script_version, ".png"), plot = nFpernC_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(nFpernC_p)
+        
+        
+        # nCount vs nGene (a high ratio is better) and save it
+        nCvnF_p <- ggplot(data = CTC_meta.data_clean,
+                          aes(x = nCount_RNA_seq, y = nFeature_RNA_seq, color = mt.percent)) +
+            geom_point() + 
+            scale_color_gradient(low = "grey90", high = "red") +
+            scale_fill_tron() +
+            labs(x = "mRNA counts", y = "Gene counts", color = "MT gene expression percentage") +
+            #stat_smooth(method = lm) +
+            scale_x_log10(labels = scales::comma) +
+            scale_y_log10(labels = scales::comma) +
+            geom_hline(yintercept = 1000, linetype = "dashed") +
+            geom_hline(yintercept = 6500, linetype = "dashed") +
+            geom_vline(xintercept = 4000, linetype = "dashed") +
+            theme_classic() +
+            #facet_wrap(facets = ~RespGroup)
+            ggtitle("nCount vs nFeature - QC plot") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(nCvnF_p)
+        
+        ggsave(filename = paste0("nCount vs nFeature - QC plot", script_version, ".png"), plot = nCvnF_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(nCvnF_p)
+        
+    } else {
+        message("Pre-QC plots were not requested. Skipping the plotting code block.")
+    }
+}
+generate_pre_qc_plots()
 
 
 # Clean objects
 rm(CTC_meta.data_clean)
 
-#==================================================================================================================================
+#################################################################   End Section  ##################################################################
 
 
 
@@ -578,11 +590,11 @@ filt_CTC.obj <- subset(CTC_reseq.obj,
                                     nFeature_RNA_seq <= 6500)
 
 
-# Save the filtered seurat object for later use
+# Save the filtered Seurat object for later use
 saveRDS(object = filt_CTC.obj, file = paste0(getwd(), "/", script_version, "/", "Filtered_CTC_Seurat_object", script_version, ".rds"))
 
 
-# Load the filtered surat object if not loaded yet
+# Load the filtered Seurat object if not loaded yet
 if (exists("filt_CTC.obj", where = .GlobalEnv)) {
     message("The filt_CTC.obj is already present in the .GlobalEnv")
 } else {
@@ -646,122 +658,139 @@ if (exists("filt_CTC.obj", where = .GlobalEnv)) {
 ## Re-affirming the QC metrics on the trimmed, filtered data
 
 
-# Checking the new cell numbers
-cn_p <- ggplot(filt_CTC.obj@meta.data,
-               aes(x = RespGroup, fill = RespGroup)) +
-    geom_bar(color = "black") +
-    geom_text(aes(label = after_stat(count)), stat = "count", position = position_dodge(width = 0.9), vjust = -0.5) +
-    scale_fill_tron() +
-    labs(x = "Response groups", y = "Cell numbers", fill = "Response groups") +
-    ggtitle("Filtered cell numbers after sequencing") +
-    theme_classic() +
-    theme(plot.title = element_text(hjust = 0.5))
-print(cn_p)
+# This function simply runs a block of code, plotting and saving the filtered data one by one (the only purpose of this is conciseness)
+generate_filtered_data_plots = function(make_plots = TRUE) {
+    if (make_plots == TRUE) {
+        
+        message("Pre-QC plots were requested. Running the plotting code block.")
+        
+        
+        # Checking the new cell numbers
+        cn_p <- ggplot(filt_CTC.obj@meta.data,
+                       aes(x = RespGroup, fill = RespGroup)) +
+            geom_bar(color = "black") +
+            geom_text(aes(label = after_stat(count)), stat = "count", position = position_dodge(width = 0.9), vjust = -0.5) +
+            scale_fill_tron() +
+            labs(x = "Response groups", y = "Cell numbers", fill = "Response groups") +
+            ggtitle("Filtered cell numbers after sequencing") +
+            theme_classic() +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(cn_p)
+        
+        ggsave(filename = paste0("Filtered cell numbers", script_version, ".png"), plot = cn_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(cn_p)
+        
+        
+        # Visualizing the mt.percent across cells using density plot and save it
+        mt_pd <- ggplot(filt_CTC.obj@meta.data,
+                        aes(x = mt.percent, fill = RespGroup)) +
+            geom_density(alpha = 0.2) +
+            scale_fill_tron() +
+            theme_classic() +
+            labs(x = "Cell percentage", y = "MT gene percent distribution", fill = "Response groups") +
+            ggtitle("Filtered mitochondrial gene expression") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(mt_pd)
+        
+        ggsave(filename = paste0("Filtered mitochondrial gene expression", script_version, ".png"), plot = mt_pd,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(mt_pd)
+        
+        
+        # Visualizing the nCount numbers/treatment groups and save it
+        nCount_p <- ggplot(filt_CTC.obj@meta.data,
+                           aes(x = nCount_RNA_seq, fill = RespGroup)) +
+            geom_density(alpha = 0.2) +
+            scale_fill_tron() +
+            labs(x = "nCounts", y = expression("log"[10]* " Count density"), fill = "Response group") +
+            scale_x_log10(labels = scales::comma) + 
+            theme_classic() +
+            #geom_vline(xintercept = 2000, color = "red") +
+            ggtitle("Filtered mRNA count distribution") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(nCount_p)
+        
+        ggsave(filename = paste0("Filtered mRNA count distribution", script_version, ".png"), plot = nCount_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(nCount_p)
+        
+        
+        # Visualizing the nFeature numbers/treatment groups and save it
+        nFeature_p <- ggplot(filt_CTC.obj@meta.data,
+                             aes(x = nFeature_RNA_seq, fill = RespGroup)) +
+            geom_density(alpha = 0.2) +
+            scale_fill_tron() +
+            labs(x = "nFeatures", y = expression("log"[10]* " Feature density"), fill = "Response group") +
+            scale_x_log10(labels = scales::comma) + 
+            theme_classic() +
+            ggtitle("Filtered gene count distribution") +
+            #geom_vline(xintercept = 1000, color = "red") +
+            #geom_vline(xintercept = 6500, color = "orange") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(nFeature_p)
+        
+        ggsave(filename = paste0("Filtered gene count distribution", script_version, ".png"), plot = nFeature_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(nFeature_p)
+        
+        
+        # Cell complexity plotting by checking the nFeature/nCount ratio (the higher the nFeature/nCount
+        # the more complex the cells are) and save it
+        nFpernC_p <-ggplot(filt_CTC.obj@meta.data,
+                           aes(x = nFeature.per.nCount, fill = RespGroup)) +
+            geom_density(alpha = 0.2) +
+            scale_fill_tron() +
+            labs(x = "nFeatures/nCounts", y = expression("log"[10]* " density"), fill = "Response group") +
+            theme_classic() +
+            ggtitle("Cell complexity distribution (nFeture/nCount)") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(nFpernC_p)
+        
+        ggsave(filename = paste0("Filtered cell complexity distribution", script_version, ".png"), plot = nFpernC_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(nFpernC_p)
+        
+        
+        # nCount vs nGene (a high ratio is better) and save it
+        nCvnF_p <- ggplot(data = filt_CTC.obj@meta.data,
+                          aes(x = nCount_RNA_seq, y = nFeature_RNA_seq, color = mt.percent)) +
+            geom_point() + 
+            scale_color_gradient(low = "grey90", high = "red") +
+            #stat_smooth(method = lm) +
+            labs(x = "mRNA counts", y = "Gene counts", color = "MT gene expression percentage") +
+            scale_x_log10(labels = scales::comma) +
+            scale_y_log10(labels = scales::comma) +
+            #geom_hline(yintercept = 1000, linetype = "dashed") +
+            #geom_hline(yintercept = 6500, linetype = "dashed") +
+            #geom_vline(xintercept = 4000, linetype = "dashed") +
+            theme_classic() +
+            #facet_wrap(facets = ~RespGroup)
+            ggtitle("Filtered nCount vs nFeature - QC plot") +
+            theme(plot.title = element_text(hjust = 0.5))
+        print(nCvnF_p)
+        
+        ggsave(filename = paste0("Filtered nCount vs nFeature - QC plot", script_version, ".png"), plot = nCvnF_p,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(nCvnF_p)
+        
+    } else {
+        
+        message("Pre-QC plots were not requested. Skipping the plotting code block.")
+        
+    }
+    
+}
+generate_filtered_data_plots()
 
-ggsave(filename = paste0("Filtered cell numbers", script_version, ".png"), plot = cn_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(cn_p)
 
-
-# Visualizing the mt.percent across cells using density plot and save it
-mt_pd <- ggplot(filt_CTC.obj@meta.data,
-                aes(x = mt.percent, fill = RespGroup)) +
-    geom_density(alpha = 0.2) +
-    scale_fill_tron() +
-    theme_classic() +
-    labs(x = "Cell percentage", y = "MT gene percent distribution", fill = "Response groups") +
-    ggtitle("Filtered mitochondrial gene expression") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(mt_pd)
-
-ggsave(filename = paste0("Filtered mitochondrial gene expression", script_version, ".png"), plot = mt_pd,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(mt_pd)
-
-
-# Visualizing the nCount numbers/treatment groups and save it
-nCount_p <- ggplot(filt_CTC.obj@meta.data,
-                   aes(x = nCount_RNA_seq, fill = RespGroup)) +
-    geom_density(alpha = 0.2) +
-    scale_fill_tron() +
-    labs(x = "nCounts", y = expression("log"[10]* " Count density"), fill = "Response group") +
-    scale_x_log10(labels = scales::comma) + 
-    theme_classic() +
-    #geom_vline(xintercept = 2000, color = "red") +
-    ggtitle("Filtered mRNA count distribution") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(nCount_p)
-
-ggsave(filename = paste0("Filtered mRNA count distribution", script_version, ".png"), plot = nCount_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(nCount_p)
-
-
-# Visualizing the nFeature numbers/treatment groups and save it
-nFeature_p <- ggplot(filt_CTC.obj@meta.data,
-                     aes(x = nFeature_RNA_seq, fill = RespGroup)) +
-    geom_density(alpha = 0.2) +
-    scale_fill_tron() +
-    labs(x = "nFeatures", y = expression("log"[10]* " Feature density"), fill = "Response group") +
-    scale_x_log10(labels = scales::comma) + 
-    theme_classic() +
-    ggtitle("Filtered gene count distribution") +
-    #geom_vline(xintercept = 1000, color = "red") +
-    #geom_vline(xintercept = 6500, color = "orange") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(nFeature_p)
-
-ggsave(filename = paste0("Filtered gene count distribution", script_version, ".png"), plot = nFeature_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(nFeature_p)
-
-
-# Cell complexity plotting by checking the nFeature/nCount ratio (the higher the nFeature/nCount
-# the more complex the cells are) and save it
-nFpernC_p <-ggplot(filt_CTC.obj@meta.data,
-                   aes(x = nFeature.per.nCount, fill = RespGroup)) +
-    geom_density(alpha = 0.2) +
-    scale_fill_tron() +
-    labs(x = "nFeatures/nCounts", y = expression("log"[10]* " density"), fill = "Response group") +
-    theme_classic() +
-    ggtitle("Cell complexity distribution (nFeture/nCount)") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(nFpernC_p)
-
-ggsave(filename = paste0("Filtered cell complexity distribution", script_version, ".png"), plot = nFpernC_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(nFpernC_p)
-
-
-# nCount vs nGene (a high ratio is better) and save it
-nCvnF_p <- ggplot(data = filt_CTC.obj@meta.data,
-                  aes(x = nCount_RNA_seq, y = nFeature_RNA_seq, color = mt.percent)) +
-    geom_point() + 
-    scale_color_gradient(low = "grey90", high = "red") +
-    #stat_smooth(method = lm) +
-    labs(x = "mRNA counts", y = "Gene counts", color = "MT gene expression percentage") +
-    scale_x_log10(labels = scales::comma) +
-    scale_y_log10(labels = scales::comma) +
-    #geom_hline(yintercept = 1000, linetype = "dashed") +
-    #geom_hline(yintercept = 6500, linetype = "dashed") +
-    #geom_vline(xintercept = 4000, linetype = "dashed") +
-    theme_classic() +
-    #facet_wrap(facets = ~RespGroup)
-    ggtitle("Filtered nCount vs nFeature - QC plot") +
-    theme(plot.title = element_text(hjust = 0.5))
-print(nCvnF_p)
-
-ggsave(filename = paste0("Filtered nCount vs nFeature - QC plot", script_version, ".png"), plot = nCvnF_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(nCvnF_p)
-
-#==================================================================================================================================
+#################################################################   End Section  ##################################################################
 
 
 
@@ -785,23 +814,47 @@ rm(nCvnF_p)
 ccPhase_CTC.obj <- NormalizeData(filt_CTC.obj)
 
 
-# Load cell cycle markers
-# Cell cycle markers are available as part of the seurat package in gene name format
-s.genes <- cc.genes.updated.2019$s.genes
-g2m.genes <- cc.genes.updated.2019$g2m.genes
-
-
-# In this case I did not convert my ensemblIDs to gene names as the conversion missed
-# some IDs, so for the cell cycle identification and matching I have to convert 
-# the gene names into ensembl IDs like I tried before
-s.IDs <- getBM(attributes = c("ensembl_gene_id","external_gene_name"),
-                    filters = "external_gene_name",
-                    values = s.genes,
-                    mart = ensembl_connection)
-g2m.IDs <- getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
-                 filters = "external_gene_name",
-                 values = g2m.genes,
-                 mart = ensembl_connection)
+# This if else statement will check if the S and G2M cell cycle markers are present in the working directory and if yes are they loaded in the global Env.
+# If present but not loaded it will load them, if not present and not loaded it will attempt to make them 
+if ((file.exists("s_phase_IDs.csv") & file.exists("g2m_phase_IDs.csv")) && (!exists(x = "s.IDs", where = .GlobalEnv) & !exists(x = "g2m.IDs", where = .GlobalEnv))) {
+    
+    s.IDs <- read.csv(file = "s_phase_IDs.csv")
+    g2m.IDs <- read.csv(file = "g2m_phase_IDs.csv")
+    message("The cell cycle marker tables for S and G2M phases are loaded as the following variables: ", deparse(substitute(s.IDs)), " and " ,deparse(substitute(g2m.IDs)))
+    
+} else if (exists(x = "s.IDs", where = .GlobalEnv) & exists(x = "g2m.IDs", where = .GlobalEnv)) {
+    
+    message("The cell cycle marker tables for S and G2M phases are already loaded in the .GlobalEnv.")
+    
+    
+} else {
+    
+    message("The cell cycle marker tables for S and G2M are not found in the working directory. Running the code block to manually create them:")
+    
+    # Load cell cycle markers
+    # Cell cycle markers are available as part of the seurat package in gene name format
+    s.genes <- cc.genes.updated.2019$s.genes
+    g2m.genes <- cc.genes.updated.2019$g2m.genes
+    
+    
+    # In this case I did not convert my ensemblIDs to gene names as the conversion missed
+    # some IDs, so for the cell cycle identification and matching I have to convert 
+    # the gene names into ensembl IDs like I tried before
+    s.IDs <- getBM(attributes = c("ensembl_gene_id","external_gene_name"),
+                   filters = "external_gene_name",
+                   values = s.genes,
+                   mart = ensembl_connection)
+    g2m.IDs <- getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
+                     filters = "external_gene_name",
+                     values = g2m.genes,
+                     mart = ensembl_connection)
+    
+    
+    # Write the resulting dataframes into the working directory
+    write_csv(x = s.IDs, file = "s_phase_IDs.csv")
+    write_csv(x = g2m.IDs, file = "g2m_phase_IDs.csv")
+    
+}
 
 
 # Clean the workspace a bit by removing unnecessary objects
@@ -905,7 +958,7 @@ rm(ccPhase_CTC.obj, CTC_reseq.obj)
 # In this particular case both the cell cycle and mitotic gene expression data scatters together, and there are no visible clusters
 # based on the cell cycle phase or mitotic gene expression so they do not have to be regressed out
 
-#==================================================================================================================================
+#################################################################   End Section  ##################################################################
 
 
 
@@ -930,7 +983,7 @@ rm(ccPhase_CTC.obj, CTC_reseq.obj)
 # NOTE: V3.9 is used as the standard as this script was forked for the Monocle3 analysis, and general refactoring
 if (file.exists(paste0(getwd(), "/", "SCTransformed_fully_prepared_Seurat_object_V3.9.rds")) && !exists(x = "sct_CTC.obj", where = .GlobalEnv)) {
     sct_CTC.obj <- readRDS(file = paste0(getwd(), "/", "SCTransformed_fully_prepared_Seurat_object_V3.9.rds"))
-    message("The standard SCTransformed Seurat object already exists and will be loaded as: ", deparse(substitute(sct_CTC.obj)))
+    message("The standard SCTransformed Seurat object is present in the working directory and will be loaded as: ", deparse(substitute(sct_CTC.obj)))
 
 } else {
 
@@ -1060,16 +1113,14 @@ if (file.exists(paste0(getwd(), "/", "SCTransformed_fully_prepared_Seurat_object
     # Saving the fully prepared CTC seurat object
     saveRDS(object = sct_CTC.obj, file = paste0(getwd(), "/", script_version, "/", "SCTransformed_fully_prepared_CTC_Seurat_object", script_version, ".rds"))
 
-
-    # If not loaded, load the saved SCTransformed CTC Seurat object
-    if (exists("sct_CTC.obj", where = .GlobalEnv)) {
-        message("The sct_CTC.obj is already present in the .GlobalEnv")
-    } else {
-        message("Loading the sct_CTC.obj")
-        sct_CTC.obj <- readRDS(file = paste0(getwd(), "/", script_version, "/", "SCTransformed_fully_prepared_CTC_Seurat_object", script_version, ".rds"))
-
-    }
-
+    
+    # Closing message
+    message("The block ran succesfully. \n",
+            "The newly prepared SCT transformed Seurat object and the SCT transformed, fully prepared Seurat object were saved into the version folder ",
+            script_version, " as follows: \n",
+            "SCTransformed_CTC_Seurat_object", script_version, ".rds \n",
+            "SCTransformed_fully_prepared_CTC_Seurat_object", script_version, ".rds")
+    
 }
 
 
@@ -1123,7 +1174,7 @@ rm(TSNE_p, TSNE_p2)
 # Removing unnecessary objects
 rm(g2m.IDs, s.IDs, MT_genes, QC_PCA, QC_PCA_par)
 
-#==================================================================================================================================
+#################################################################   End Section  ##################################################################
 
 
 
@@ -1135,180 +1186,515 @@ rm(g2m.IDs, s.IDs, MT_genes, QC_PCA, QC_PCA_par)
 ### Plotting different metrics over the UMAP clusters to if they correlate
 
 
-# Overlaying nFeature
-grad_col <- pal_locuszoom("default")(7)
-
-UMAP_nF_p <- FeaturePlot(sct_CTC.obj,
-                         reduction = "umap",
-                         features = "nFeature_SCT")
-UMAP_nF_p2 <- UMAP_nF_p +
-    #scale_color_gradient(low = "lightgrey", high = cluster_colors[7]) +
-    scale_color_gradient(low = "lightgrey", high = grad_col[5]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
-    ggtitle("UMAP plot - nFeatures")
-print(UMAP_nF_p2)
-
-ggsave(filename = paste0("UMAP_nFeature_gb", script_version, ".png"), UMAP_nF_p2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_nF_p, UMAP_nF_p2)
-
-
-# Overlaying nCount
-UMAP_nC_p <- FeaturePlot(sct_CTC.obj,
-                         reduction = "umap",
-                         features = "nCount_SCT")
-UMAP_nC_p2 <- UMAP_nC_p +
-    scale_color_gradient(low = "lightgrey", high = grad_col[5]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
-    ggtitle("UMAP plot - nCounts")
-print(UMAP_nC_p2)
-
-ggsave(filename = paste0("UMAP_nCount_gb", script_version, ".png"), UMAP_nC_p2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_nC_p, UMAP_nC_p2)
-
-
-# Overlay mt.percent
-UMAP_mt.percent <- FeaturePlot(sct_CTC.obj,
-                               reduction = "umap",
-                               features = "mt.percent")
-UMAP_mt.percent2 <- UMAP_mt.percent +
-    scale_color_gradient(low = "lightgrey", high = grad_col[5]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
-    ggtitle("UMAP plot - MT gene expression")
-print(UMAP_mt.percent2)
-
-ggsave(filename = paste0("UMAP_mt.percent_gb", script_version, ".png"), UMAP_mt.percent2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_mt.percent, UMAP_mt.percent2)
-
-
-# Overlay cell cycle
-UMAP_CellCyc <- DimPlot(sct_CTC.obj,
-                        reduction = "umap",
-                        group.by = "Phase")
-UMAP_CellCyc2 <- UMAP_CellCyc +
-    scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Cell cycle phase", fill = "Cell cycle phase") +
-    ggtitle("UMAP plot - Cell cycle phases")
-print(UMAP_CellCyc2)
-
-ggsave(filename = paste0("UMAP_Cell_cycle_gb", script_version, ".png"), UMAP_CellCyc2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_CellCyc, UMAP_CellCyc2)
-
-
-# Overlay treatment cycle
-UMAP_TreatCyc <- DimPlot(sct_CTC.obj,
-                         reduction = "umap",
-                         group.by = "RealCycle")
-UMAP_TreatCyc2 <- UMAP_TreatCyc +
-    scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Treatment cycles", fill = "Treatment cycles") +
-    ggtitle("UMAP plot - Treatment cycles")
-print(UMAP_TreatCyc2)
-
-ggsave(filename = paste0("UMAP_Treatment_cycles_gb", script_version, ".png"), UMAP_TreatCyc2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_TreatCyc, UMAP_TreatCyc2)
-
-
-#overlay treatment type
-UMAP_TreatType <- DimPlot(sct_CTC.obj,
-                         reduction = "umap",
-                         group.by = "Treatment")
-UMAP_TreatType2 <- UMAP_TreatType +
-    scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Treatment", fill = "Treatment") +
-    ggtitle("UMAP plot - Treatment types")
-print(UMAP_TreatType2)
-
-ggsave(filename = paste0("UMAP_Treatment_type_gb", script_version, ".png"), UMAP_TreatType2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_TreatType, UMAP_TreatType2)
-
-
-# Overlay RespGroup
-UMAP_RespG <- DimPlot(sct_CTC.obj,
-                      reduction = "umap",
-                      group.by = "RespGroup")
-UMAP_RespG2 <- UMAP_RespG +
-    scale_fill_manual(values = cluster_colors[c(1, 2)]) +
-    scale_color_manual(values = cluster_colors[c(1, 2)]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Response group", fill = "Response group") +
-    ggtitle("UMAP plot - Response groups")
-print(UMAP_RespG2)
-
-ggsave(filename = paste0("UMAP_Response_group_gb", script_version, ".png"), UMAP_RespG2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_RespG, UMAP_RespG2)
-
-
-#overlay Luthetium-177 doses
-UMAP_Lu <- DimPlot(sct_CTC.obj,
-                      reduction = "umap",
-                      group.by = "Lu177_GBq")
-UMAP_Lu2 <- UMAP_Lu +
-    scale_fill_manual(values = cluster_colors_4[c(4, 5, 6, 7, 8, 9)]) +
-    scale_color_manual(values = cluster_colors_4[c(4, 5, 6, 7, 8, 9)]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Lu-177 doses (GBq)", fill = "Lutetium-177 doses (GBq)") +
-    ggtitle("UMAP plot - Lu-177 treatment doses")
-print(UMAP_Lu2)
-
-ggsave(filename = paste0("UMAP_Lu-177_treatment_doses_gb", script_version, ".png"), UMAP_Lu2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_Lu, UMAP_Lu2)
-
-
-# Overlay Actinium-225 doses
-UMAP_Ac <- DimPlot(sct_CTC.obj,
-                   reduction = "umap",
-                   group.by = "Ac225_MBq")
-UMAP_Ac2 <- UMAP_Ac +
-    scale_fill_manual(values = cluster_colors_4[c(4, 5, 6, 7)]) +
-    scale_color_manual(values = cluster_colors_4[c(4, 5, 6, 7)]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Ac-225 doses (MBq)", fill = "Ac-225 doses (MBq)") +
-    ggtitle("UMAP plot - Ac-225 treatment doses")
-print(UMAP_Ac2)
-
-ggsave(filename = paste0("UMAP_Ac-225_treatment_doses_gb", script_version, ".png"), UMAP_Ac2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_Ac, UMAP_Ac2)
-
-
-# Overlay marker status
-UMAP_MarkerStat <- DimPlot(sct_CTC.obj,
-                          reduction = "umap",
-                          group.by = "Marker.status")
-UMAP_MarkerStat2 <- UMAP_MarkerStat +
-    scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    labs(x = "UMAP 1", y = "UMAP 2", color = "Marker status", fill = "Marker status") +
-    ggtitle("UMAP plot - Surface marker distribution")
-print(UMAP_MarkerStat2)
-
-ggsave(filename = paste0("UMAP_Marker_Status_gb", script_version, ".png"), UMAP_MarkerStat2,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 1500, height = 1000, units = "px")
-rm(UMAP_MarkerStat, UMAP_MarkerStat2)
+# This function simply runs a block of code, plotting and saving additional data overplayed on the UMAP (the only purpose of this is conciseness)
+plot_UMAP_ovelrays = function (make_plots = TRUE) {
+    
+    if (make_plots == TRUE) {
+        
+        message("Overlay plots were requested. Running the plotting code block.")
+        
+        # Overlaying nFeature
+        grad_col <- pal_locuszoom("default")(7)
+        
+        UMAP_nF_p <- FeaturePlot(sct_CTC.obj,
+                                 reduction = "umap",
+                                 features = "nFeature_SCT")
+        UMAP_nF_p2 <- UMAP_nF_p +
+            #scale_color_gradient(low = "lightgrey", high = cluster_colors[7]) +
+            scale_color_gradient(low = "lightgrey", high = grad_col[5]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
+            ggtitle("UMAP plot - nFeatures")
+        print(UMAP_nF_p2)
+        
+        ggsave(filename = paste0("UMAP_nFeature_gb", script_version, ".png"), UMAP_nF_p2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_nF_p, UMAP_nF_p2)
+        
+        
+        # Overlaying nCount
+        UMAP_nC_p <- FeaturePlot(sct_CTC.obj,
+                                 reduction = "umap",
+                                 features = "nCount_SCT")
+        UMAP_nC_p2 <- UMAP_nC_p +
+            scale_color_gradient(low = "lightgrey", high = grad_col[5]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
+            ggtitle("UMAP plot - nCounts")
+        print(UMAP_nC_p2)
+        
+        ggsave(filename = paste0("UMAP_nCount_gb", script_version, ".png"), UMAP_nC_p2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_nC_p, UMAP_nC_p2)
+        
+        
+        # Overlay mt.percent
+        UMAP_mt.percent <- FeaturePlot(sct_CTC.obj,
+                                       reduction = "umap",
+                                       features = "mt.percent")
+        UMAP_mt.percent2 <- UMAP_mt.percent +
+            scale_color_gradient(low = "lightgrey", high = grad_col[5]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
+            ggtitle("UMAP plot - MT gene expression")
+        print(UMAP_mt.percent2)
+        
+        ggsave(filename = paste0("UMAP_mt.percent_gb", script_version, ".png"), UMAP_mt.percent2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_mt.percent, UMAP_mt.percent2)
+        
+        
+        # Overlay cell cycle
+        UMAP_CellCyc <- DimPlot(sct_CTC.obj,
+                                reduction = "umap",
+                                group.by = "Phase")
+        UMAP_CellCyc2 <- UMAP_CellCyc +
+            scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+            scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Cell cycle phase", fill = "Cell cycle phase") +
+            ggtitle("UMAP plot - Cell cycle phases")
+        print(UMAP_CellCyc2)
+        
+        ggsave(filename = paste0("UMAP_Cell_cycle_gb", script_version, ".png"), UMAP_CellCyc2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_CellCyc, UMAP_CellCyc2)
+        
+        
+        # Overlay treatment cycle
+        UMAP_TreatCyc <- DimPlot(sct_CTC.obj,
+                                 reduction = "umap",
+                                 group.by = "RealCycle")
+        UMAP_TreatCyc2 <- UMAP_TreatCyc +
+            scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+            scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Treatment cycles", fill = "Treatment cycles") +
+            ggtitle("UMAP plot - Treatment cycles")
+        print(UMAP_TreatCyc2)
+        
+        ggsave(filename = paste0("UMAP_Treatment_cycles_gb", script_version, ".png"), UMAP_TreatCyc2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_TreatCyc, UMAP_TreatCyc2)
+        
+        
+        #overlay treatment type
+        UMAP_TreatType <- DimPlot(sct_CTC.obj,
+                                  reduction = "umap",
+                                  group.by = "Treatment")
+        UMAP_TreatType2 <- UMAP_TreatType +
+            scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+            scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Treatment", fill = "Treatment") +
+            ggtitle("UMAP plot - Treatment types")
+        print(UMAP_TreatType2)
+        
+        ggsave(filename = paste0("UMAP_Treatment_type_gb", script_version, ".png"), UMAP_TreatType2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_TreatType, UMAP_TreatType2)
+        
+        
+        # Overlay RespGroup
+        UMAP_RespG <- DimPlot(sct_CTC.obj,
+                              reduction = "umap",
+                              group.by = "RespGroup")
+        UMAP_RespG2 <- UMAP_RespG +
+            scale_fill_manual(values = cluster_colors[c(1, 2)]) +
+            scale_color_manual(values = cluster_colors[c(1, 2)]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Response group", fill = "Response group") +
+            ggtitle("UMAP plot - Response groups")
+        print(UMAP_RespG2)
+        
+        ggsave(filename = paste0("UMAP_Response_group_gb", script_version, ".png"), UMAP_RespG2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_RespG, UMAP_RespG2)
+        
+        
+        #overlay Luthetium-177 doses
+        UMAP_Lu <- DimPlot(sct_CTC.obj,
+                           reduction = "umap",
+                           group.by = "Lu177_GBq")
+        UMAP_Lu2 <- UMAP_Lu +
+            scale_fill_manual(values = cluster_colors_4[c(4, 5, 6, 7, 8, 9)]) +
+            scale_color_manual(values = cluster_colors_4[c(4, 5, 6, 7, 8, 9)]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Lu-177 doses (GBq)", fill = "Lutetium-177 doses (GBq)") +
+            ggtitle("UMAP plot - Lu-177 treatment doses")
+        print(UMAP_Lu2)
+        
+        ggsave(filename = paste0("UMAP_Lu-177_treatment_doses_gb", script_version, ".png"), UMAP_Lu2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_Lu, UMAP_Lu2)
+        
+        
+        # Overlay Actinium-225 doses
+        UMAP_Ac <- DimPlot(sct_CTC.obj,
+                           reduction = "umap",
+                           group.by = "Ac225_MBq")
+        UMAP_Ac2 <- UMAP_Ac +
+            scale_fill_manual(values = cluster_colors_4[c(4, 5, 6, 7)]) +
+            scale_color_manual(values = cluster_colors_4[c(4, 5, 6, 7)]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Ac-225 doses (MBq)", fill = "Ac-225 doses (MBq)") +
+            ggtitle("UMAP plot - Ac-225 treatment doses")
+        print(UMAP_Ac2)
+        
+        ggsave(filename = paste0("UMAP_Ac-225_treatment_doses_gb", script_version, ".png"), UMAP_Ac2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_Ac, UMAP_Ac2)
+        
+        
+        # Overlay marker status
+        UMAP_MarkerStat <- DimPlot(sct_CTC.obj,
+                                   reduction = "umap",
+                                   group.by = "Marker.status")
+        UMAP_MarkerStat2 <- UMAP_MarkerStat +
+            scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+            scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+            labs(x = "UMAP 1", y = "UMAP 2", color = "Marker status", fill = "Marker status") +
+            ggtitle("UMAP plot - Surface marker distribution")
+        print(UMAP_MarkerStat2)
+        
+        ggsave(filename = paste0("UMAP_Marker_Status_gb", script_version, ".png"), UMAP_MarkerStat2,
+               device = "png", path = paste0(script_version, "/", "Plots/"),
+               width = 1500, height = 1000, units = "px")
+        rm(UMAP_MarkerStat, UMAP_MarkerStat2)
+        
+    } else {
+        
+        message("Overlay plots were not requested. Skipping the plotting code block.")
+        
+    }
+    
+}
+plot_UMAP_ovelrays()
 
 
 
 
 ## Visualizing the overlay data in a more understandable manner, using bar charts
 
+
+
+calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_statistics = TRUE) {
+        
+        # Preparing the main dataframe for the visualization
+        head(sct_CTC.obj@meta.data)
+        
+        sct_CTC_meta_df <- sct_CTC.obj@meta.data
+        sct_CTC_meta_df$patients <- str_remove(sct_CTC_meta_df$patientID, "." %R% END) 
+        
+        
+        # Visualizing data from the variables side
+        # Visualizing the treatment cycle data
+        # Creating the plotting df
+        Treatment_cycles_summary_df <- data.frame(Cycles = c(0, 1, 2),
+                                                  Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 0)),
+                                                                         nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 1)),
+                                                                         nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 2))),
+                                                  Cell_numbers_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 0, seurat_clusters == 0)),
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 1, seurat_clusters == 0)),
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 2, seurat_clusters == 0))),
+                                                  Cell_numbers_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 0, seurat_clusters == 1)),
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 1, seurat_clusters == 1)),
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 2, seurat_clusters == 1))),
+                                                  Cell_percent_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 0, seurat_clusters == 0)) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 0)) * 100,
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 1, seurat_clusters == 0)) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 1)) * 100,
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 2, seurat_clusters == 0)) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 2)) * 100),
+                                                  Cell_percent_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 0, seurat_clusters == 1)) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 0)) * 100,
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 1, seurat_clusters == 1)) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 1)) * 100,
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 2, seurat_clusters == 1)) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, RealCycle == 2)) * 100))
+        print(Treatment_cycles_summary_df)
+        
+        
+        # Transforming the plotting df to a long format
+        Treatment_cycles_summary_df_long <- pivot_longer(Treatment_cycles_summary_df, cols = c(Cell_percent_c0, Cell_percent_c1), names_to = "Clusters", values_to = "Percentages")
+        print(Treatment_cycles_summary_df_long)
+        
+        
+        # Visualizing the treatment type data
+        # Creating the plotting df
+        Treatment_summary_df <- data.frame(Treatment_type = c("AL", "L", "NT"),
+                                           Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "AL")),
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "L")),
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "NT"))),
+                                           Cell_numbers_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "AL", seurat_clusters == 0)),
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "L", seurat_clusters == 0)),
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "NT", seurat_clusters == 0))),
+                                           Cell_numbers_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "AL", seurat_clusters == 1)),
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "L", seurat_clusters == 1)),
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "NT", seurat_clusters == 1))),
+                                           Cell_percent_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "AL", seurat_clusters == 0)) /
+                                                                   nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "AL")) * 100,
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "L", seurat_clusters == 0)) /
+                                                                   nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "L")) * 100,
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "NT", seurat_clusters == 0)) /
+                                                                   nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "NT")) * 100),
+                                           Cell_percent_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "AL", seurat_clusters == 1)) /
+                                                                   nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "AL")) * 100,
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "L", seurat_clusters == 1)) /
+                                                                   nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "L")) * 100,
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "NT", seurat_clusters == 1)) /
+                                                                   nrow(dplyr::filter(.data = sct_CTC_meta_df, Treatment == "NT")) * 100))
+        print(Treatment_summary_df)
+        
+        
+        # Transforming the plotting df to a long format
+        Treatment_summary_df_long <- pivot_longer(Treatment_summary_df, cols = c(Cell_percent_c0, Cell_percent_c1), names_to = "Clusters", values_to = "Percentages")
+        print(Treatment_summary_df_long)
+        
+        
+        # Visualizing the cell cycle data
+        # Creating the plotting df
+        Cell_cycle_summary_df <- data.frame(CC_phase = c("G1", "S", "G2M"),
+                                            Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G1")),
+                                                                   nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "S")),
+                                                                   nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G2M"))),
+                                            Cell_numbers_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G1", seurat_clusters == 0)),
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "S", seurat_clusters == 0)),
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G2M", seurat_clusters == 0))),
+                                            Cell_numbers_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G1", seurat_clusters == 1)),
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "S", seurat_clusters == 1)),
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G2M", seurat_clusters == 1))),
+                                            Cell_percent_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G1", seurat_clusters == 0)) /
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G1")) * 100,
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "S", seurat_clusters == 0)) /
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "S")) * 100,
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G2M", seurat_clusters == 0)) /
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G2M")) * 100),
+                                            Cell_percent_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G1", seurat_clusters == 1)) /
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G1")) * 100,
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "S", seurat_clusters == 1)) /
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "S")) * 100,
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G2M", seurat_clusters == 1)) /
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Phase == "G2M")) * 100))
+        print(Cell_cycle_summary_df)
+        
+        
+        # Visualizing the response group data
+        # Creating the plotting df
+        Response_summary_df <- data.frame(response_group = c("Responder", "Nonresponder"),
+                                          Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Responder")),
+                                                                 nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Nonresponder"))),
+                                          Cell_numbers_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Responder", seurat_clusters == 0)),
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Nonresponder", seurat_clusters == 0))),
+                                          Cell_numbers_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Responder", seurat_clusters == 1)),
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Nonresponder", seurat_clusters == 1))),
+                                          Cell_percent_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Responder", seurat_clusters == 0)) /
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Responder")) * 100,
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Nonresponder", seurat_clusters == 0)) /
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Nonresponder")) * 100),
+                                          Cell_percent_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Responder", seurat_clusters == 1)) /
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Responder")) * 100,
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Nonresponder", seurat_clusters == 1)) /
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, RespGroup == "Nonresponder")) * 100))
+        print(Response_summary_df)
+        
+        
+        # Transforming the plotting df to a long format
+        Response_summary_df_long <- pivot_longer(Response_summary_df, cols = c(Cell_percent_c0, Cell_percent_c1), names_to = "Clusters", values_to = "Percentages")
+        print(Response_summary_df_long)
+        
+        
+        # Visualizing the surface marker distribution data
+        # Creating the plotting df form the markers side
+        Surface_marker_summary_df <- data.frame(marker_status = c("EpCAM+", "EpCAM+PSMA+", "PSMA+"),
+                                                Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+")),
+                                                                       nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+PSMA+")),
+                                                                       nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "PSMA+"))),
+                                                Cell_numbers_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+", seurat_clusters == 0)),
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+PSMA+", seurat_clusters == 0)),
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "PSMA+", seurat_clusters == 0))),
+                                                Cell_numbers_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+", seurat_clusters == 1)),
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+PSMA+", seurat_clusters == 1)),
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "PSMA+", seurat_clusters == 1))),
+                                                Cell_percent_c0 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+", seurat_clusters == 0)) /
+                                                                        nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+")) * 100,
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+PSMA+", seurat_clusters == 0)) /
+                                                                        nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+PSMA+")) * 100,
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "PSMA+", seurat_clusters == 0)) /
+                                                                        nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "PSMA+")) * 100),
+                                                Cell_percent_c1 = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+", seurat_clusters == 1)) /
+                                                                        nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+")) * 100,
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+PSMA+", seurat_clusters == 1)) /
+                                                                        nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "EpCAM+PSMA+")) * 100,
+                                                                    nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "PSMA+", seurat_clusters == 1)) /
+                                                                        nrow(dplyr::filter(.data = sct_CTC_meta_df, Marker.status == "PSMA+")) * 100))
+        print(Surface_marker_summary_df)
+        
+        
+        # Transform the plotting df to the long format for plotting
+        Surface_marker_summary_df_long <- pivot_longer(Surface_marker_summary_df, cols = c(Cell_percent_c0, Cell_percent_c1), names_to = "Clusters", values_to = "Percentages")
+        print(Surface_marker_summary_df_long)
+        
+        
+        # Visualizing data from the cluster side
+        # Visualizing the treatment cycle data
+        # Creating the plotting df
+        Treatment_cycles_summary_df_clust <- data.frame(Clusters = c("Cluster 0", "Cluster 1"),
+                                                        Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")), 
+                                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1"))),
+                                                        Cycle_0_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RealCycle == "0")),
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RealCycle == "0"))),
+                                                        Cycle_1_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RealCycle == "1")),
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RealCycle == "1"))),
+                                                        Cycle_2_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RealCycle == "2")),
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RealCycle == "2"))),
+                                                        Cycle_0_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RealCycle == "0")) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RealCycle == "0")) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100),
+                                                        Cycle_1_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RealCycle == "1")) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RealCycle == "1")) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100),
+                                                        Cycle_2_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RealCycle == "2")) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RealCycle == "2")) /
+                                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100))
+        print(Treatment_cycles_summary_df_clust)
+        
+        
+        # Transform the plotting df to a long format for plotting
+        Treatment_cycles_summary_df_clust_long <- pivot_longer(Treatment_cycles_summary_df_clust, cols = c(Cycle_0_p, Cycle_1_p, Cycle_2_p), names_to = "Cycles", values_to = "Percentages")
+        print(Treatment_cycles_summary_df_clust_long)
+        
+        
+        # Visualizing the treatment type data
+        # Creating the plotting df
+        Treatment_summary_df_clust <- data.frame(Clusters = c("Cluster 0", "Cluster 1"),
+                                                 Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")), 
+                                                                        nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1"))),
+                                                 AL_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Treatment == "AL")),
+                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Treatment == "AL"))),
+                                                 L_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Treatment == "L")),
+                                                         nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Treatment == "L"))),
+                                                 NT_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Treatment == "NT")),
+                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Treatment == "NT"))),
+                                                 AL_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Treatment == "AL")) /
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Treatment == "AL")) /
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100),
+                                                 L_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Treatment == "L")) /
+                                                             nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                         nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Treatment == "L")) /
+                                                             nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100),
+                                                 NT_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Treatment == "NT")) /
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Treatment == "NT")) /
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100))
+        print(Treatment_summary_df_clust)
+        
+        
+        # Transforming the plotting df to a long format
+        Treatment_summary_df_clust_long <- pivot_longer(Treatment_summary_df_clust, cols = c(AL_p, L_p, NT_p), names_to = "Treatment_type", values_to = "Percentages")
+        print(Treatment_summary_df_clust_long)
+        
+        
+        # Visualizing the cell cycle data
+        # Creating the plotting df
+        Cell_cycle_summary_df_clust <- data.frame(Clusters = c("Cluster 0", "Cluster 1"),
+                                                  Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")), 
+                                                                         nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1"))),
+                                                  S_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Phase == "S")),
+                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Phase == "S"))),
+                                                  G1_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Phase == "G1")),
+                                                           nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Phase == "G1"))),
+                                                  G2M_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Phase == "G2M")),
+                                                            nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Phase == "G2M"))),
+                                                  S_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Phase == "S")) /
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                          nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Phase == "S")) /
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100),
+                                                  G1_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Phase == "G1")) /
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                           nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Phase == "G1")) /
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100),
+                                                  G2M_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Phase == "G2M")) /
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                            nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Phase == "G2M")) /
+                                                                nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100))
+        print(Cell_cycle_summary_df_clust)
+        
+        
+        # Transforming the plotting df to a long format
+        Cell_cycle_summary_df_clust_long <- pivot_longer(Cell_cycle_summary_df_clust, cols = c(S_p, G1_p, G2M_p), names_to = "CC_phase", values_to = "Percentages")
+        print(Cell_cycle_summary_df_clust_long)
+        
+        
+        # Visualizing the response group data
+        # Creating the plotting df
+        Response_summary_df_clust <- data.frame(Clusters = c("Cluster 0", "Cluster 1"),
+                                                Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")), 
+                                                                       nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1"))),
+                                                Resp_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RespGroup == "Responder")),
+                                                           nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RespGroup == "Responder"))),
+                                                Nonresp_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RespGroup == "Nonresponder")),
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RespGroup == "Nonresponder"))),
+                                                Resp_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RespGroup == "Responder")) /
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                           nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RespGroup == "Responder")) /
+                                                               nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100),
+                                                Nonresp_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", RespGroup == "Nonresponder")) /
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                              nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", RespGroup == "Nonresponder")) /
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100))
+        print(Response_summary_df_clust)
+        
+        
+        # Transforming the plotting df to a long format
+        Response_summary_df_clust_long <- pivot_longer(Response_summary_df_clust, cols = c(Resp_p, Nonresp_p), names_to = "Response_group", values_to = "Percentages")
+        print(Response_summary_df_clust_long)
+        
+        
+        # Visualizing the marker status data
+        # Creating the plotting df form the cluster side
+        Surface_marker_summary_df_clust <- data.frame(Clusters = c("Cluster 0", "Cluster 1"),
+                                                      Total_cell_numbers = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")), 
+                                                                             nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1"))),
+                                                      EpCAM_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Marker.status == "EpCAM+")),
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Marker.status == "EpCAM+"))),
+                                                      EpCAM_PSMA_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Marker.status == "EpCAM+PSMA+")),
+                                                                       nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Marker.status == "EpCAM+PSMA+"))),
+                                                      PSMA_n = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Marker.status == "PSMA+")),
+                                                                 nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Marker.status == "PSMA+"))),
+                                                      EpCAM_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Marker.status == "EpCAM+")) /
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                                  nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Marker.status == "EpCAM+")) /
+                                                                      nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100),
+                                                      EpCAM_PSMA_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Marker.status == "EpCAM+PSMA+")) /
+                                                                           nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                                       nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Marker.status == "EpCAM+PSMA+")) /
+                                                                           nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100),
+                                                      PSMA_p = c(nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0", Marker.status == "PSMA+")) /
+                                                                     nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "0")) * 100,
+                                                                 nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1", Marker.status == "PSMA+")) /
+                                                                     nrow(dplyr::filter(.data = sct_CTC_meta_df, seurat_clusters == "1")) * 100))
+        print(Surface_marker_summary_df_clust)
+        
+        
+        # Transform the plotting df to a long format for plotting
+        Surface_marker_summary_df_clust_long <- pivot_longer(Surface_marker_summary_df_clust, cols = c(EpCAM_p, EpCAM_PSMA_p, PSMA_p), names_to = "Markers", values_to = "Percentages")
+        print(Surface_marker_summary_df_clust_long)
+        
+        
+        if (return_statistics == TRUE) {
+            variable_side_cluster_stat <- list(
+                Treatment_cycles_summary_df,
+                Treatment_summary_df,
+                Cell_cycle_summary_df
+            )
+        }
+}
+#########################################CONTINUE HERE########################################################################################
 
 # Preparing the main dataframe for the visualization
 head(sct_CTC.obj@meta.data)
@@ -1849,7 +2235,7 @@ rm(sct_CTC_meta_df, Cell_cycle_summary_df, Cell_cycle_summary_df_long, Cell_cycl
     Treatment_summary_df, Treatment_summary_df_long, Treatment_summary_df_clust, Treatment_summary_df_clust_long)
 
 
-#==================================================================================================================================
+#################################################################   End Section  ##################################################################
 
 
 
@@ -1982,32 +2368,45 @@ rm(DE_RespvNonresp)
 # if I use ENTREZ IDs instead of gene names (in this case, only annotated genes should appear, no pseudo genes)
 
 
-# Retrieving ENTREZ IDs using the ensembl IDs
-listEnsembl() #lists the available biomart keynames, here I need "gene"
-ensembl <- useEnsembl(biomart = "genes")
-datasets <- listDatasets(ensembl) #lists the organism based datasest from which we need to chose one for the db connection
-ensembl <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl") #creates a mart object used for the queries 
-attributes <- listAttributes(ensembl) #needed for the query, describes the desired info like gene names
-filters <- listFilters(ensembl) # needed for the query, defined by upon which data we search for(?) like here the ensemblIds
+# This if statement will check if the entrezID table is already presen in the working directory and if yes it will load it
+if (file.exists("Symbols_ENSEMBL_ENTREZ_ID_table.csv") & !exists(x = "entrezIDs", where = .GlobalEnv)) {
+    
+    entrezIDs <- read.csv(file = "Symbols_ENSEMBL_ENTREZ_ID_table.csv")
+    message("The geneNames, entrezIDs and ensemblIDs containing table has been loaded as a variable: ", deparse(substitute(entrezIDs)))
+    
+} else {
+    
+    # Retrieving ENTREZ IDs using the ensembl IDs
+    listEnsembl() #lists the available biomart keynames, here I need "gene"
+    ensembl <- useEnsembl(biomart = "genes")
+    datasets <- listDatasets(ensembl) #lists the organism based datasest from which we need to chose one for the db connection
+    ensembl <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl") #creates a mart object used for the queries 
+    attributes <- listAttributes(ensembl) #needed for the query, describes the desired info like gene names
+    filters <- listFilters(ensembl) # needed for the query, defined by upon which data we search for(?) like here the ensemblIds
+    
+    
+    # Writing the database query using the previous settings
+    entrezIDs <- getBM(attributes = c("ensembl_gene_id", "entrezgene_id", "external_gene_name", "uniprot_gn_symbol"),
+                       filters = "ensembl_gene_id",
+                       values = geneIDs,
+                       mart = ensembl)
+    
+    # NOTE: as with the gene names, some IDs are missing, therefore I will try to runt he missing IDs through another database and see if they map onto
+    # ENTREZ IDs or not
+    # Additionally not every ENSEMBL ID returns an NA, so I will have to check if some were dropped and add them back
+    
+    
+    # Save the created table into the working directory
+    write_csv(x = entrezIDs, file = "Symbols_ENSEMBL_ENTREZ_ID_table.csv")
+    
+    message("The entrezID variable was created and saved into the working directory.")
+    
+}
 
-
-# Writing the database query using the previous settings
-entrezIDs <- getBM(attributes = c("ensembl_gene_id", "entrezgene_id", "external_gene_name", "uniprot_gn_symbol"),
-      filters = "ensembl_gene_id",
-      values = geneIDs,
-      mart = ensembl)
-
-# NOTE: as with the gene names, some IDs are missing, therefore I will try to runt he missing IDs through another database and see if they map onto
-# ENTREZ IDs or not
-# Additionally not every ENSEMBL ID returns an NA, so I will have to check if some were dropped and add them back
-
-
-# Save the entrezIDs dataframe for future use (as the ensembl connection is rather unstable)
-write_csv(x = entrezIDs, file = "Symbols_ENSEMBL_ENTREZ_ID_table.csv")
 
 
 # Check for the dropped ENSEMBL IDs
- dropped_IDs <- geneIDs[!geneIDs %in% unique(entrezIDs$ensembl_gene_id)]
+dropped_IDs <- geneIDs[!geneIDs %in% unique(entrezIDs$ensembl_gene_id)]
 
 
 # Add back these ENSEMBL IDs with an NA to ENTREZ IDS (and other IDs if present)
@@ -2061,7 +2460,7 @@ write_csv(x = entrezIDs, file = paste0(script_version, "/", "ENSEMBL_ID_list_wit
 
 
 # Load the saved entrezIDs df if not loaded yet
-if (!exists(x = entrezIDs, where = .GlobalEnv)) {
+if (!exists(x = "entrezIDs", where = .GlobalEnv)) {
     entrezIDs <- read.csv(file = paste0(script_version, "/", "ENSEMBL_ID_list_with_ENTREZ_IDs_and_gene_names", script_version, ".csv"))
     message("The ENTREZ ID list is loaded as the following object: ", deparse(substitute(entrezIDs)))
 }
@@ -2261,6 +2660,10 @@ entrezID_matching_par(DE_Cluster_0v1_geneNames, unifiedEntrezIDs, "ensembl_gene_
 head(DE_Cluster_0v1_geneNames_entrezIDs)
 
 
+# Save the raw generated ENSEMBL, ENTREZ ID and gene name (SYMBOL) containing table (no additional modifications)
+write_csv(x = DE_Cluster_0v1_geneNames_entrezIDs, file = paste0(script_version, "/", "DEG_clusters_0v1_raw", script_version, ".csv"))
+
+
 # Remove unnecessary variables
 rm(ensembl, datasets, attributes, filters, entrezIDs, dropped_IDs, dropped_IDs_df, missing_entrezIDs, entrezIDs_p2)
 
@@ -2348,7 +2751,7 @@ volcano_p <- ggplot(data = DEG_cluster_0v1_clean,
             scale_x_continuous(limits = c(-15, 20), breaks = seq(-15, 20, 2)) +
             scale_y_continuous(limits = c(0, 14), breaks = seq(0, 14, 2)) +
             labs(color = "Expression status", x = expression("log"[2] * "FC"), y = expression("-log"[10] * "p-value")) +
-            ggtitle("Differentially expressed genes") +
+            ggtitle("Differentially expressed genes - entrezIDs") +
             geom_text_repel(show.legend = FALSE, max.overlaps = Inf) +
             theme_classic() +
             theme(plot.title = element_text(hjust = 0.5))
@@ -2390,7 +2793,7 @@ volcano_p <- ggplot(data = DEG_cluster_0v1_symbols_clean ,
             scale_x_continuous(limits = c(-15, 20), breaks = seq(-15, 20, 2)) +
             scale_y_continuous(limits = c(0, 14), breaks = seq(0, 14, 2)) +
             labs(color = "Expression status", x = expression("log"[2] * "FC"), y = expression("-log"[10] * "p-value")) +
-            ggtitle("Differentially expressed genes") +
+            ggtitle("Differentially expressed genes - geneNames") +
             geom_text_repel(show.legend = FALSE, max.overlaps = Inf) +
             theme_classic() +
             theme(plot.title = element_text(hjust = 0.5))
@@ -2497,10 +2900,12 @@ GSEA_DE_lst_geneNames_entrezIDs[!is.na(GSEA_DE_lst_geneNames_entrezIDs$geneNames
 
 
 # Remove the NAs from the GSEA DEG lists
+GSEA_DE_lst_geneNames_entrezIDs_symbols <- GSEA_DE_lst_geneNames_entrezIDs[!is.na(GSEA_DE_lst_geneNames_entrezIDs$geneNames), ]
+
 GSEA_DE_lst_geneNames_entrezIDs <- GSEA_DE_lst_geneNames_entrezIDs[!is.na(GSEA_DE_lst_geneNames_entrezIDs$entrezIDs), ]
 GSEA_DE_lst_geneNames_entrezIDs <- GSEA_DE_lst_geneNames_entrezIDs[!is.na(GSEA_DE_lst_geneNames_entrezIDs$geneNames), ]
 
-GSEA_DE_lst_geneNames_entrezIDs_symbols <- GSEA_DE_lst_geneNames_entrezIDs[!is.na(GSEA_DE_lst_geneNames_entrezIDs$geneNames), ]
+
 
 
 # Next, check if there are any duplicated entries
@@ -2581,6 +2986,12 @@ head(GSEA_DEG_symbols_ranked_list)
 summary(GSEA_DEG_ranked_list)
 
 summary(GSEA_DEG_symbols_ranked_list)
+
+
+# Fix any remainig issues like NAs or Inf values
+GSEA_DEG_ranked_list <- GSEA_DEG_ranked_list[!is.na(GSEA_DEG_ranked_list)]
+
+GSEA_DEG_symbols_ranked_list <- GSEA_DEG_symbols_ranked_list[!is.na(GSEA_DEG_symbols_ranked_list)]
 
 
 # First order the ranked list, then plot it to check how the values are distributed, and how they look like
