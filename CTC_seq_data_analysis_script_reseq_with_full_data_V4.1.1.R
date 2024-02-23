@@ -94,7 +94,7 @@ lapply(packages, library, character.only = TRUE)
 
 
 # Setting wd + path and listing the read output tables
-setwd("C:/Work/DKFZ/Alpha_project_data_anal/Reseq")
+setwd("/Users/gaborbakos/Coding/R/DKFZ/Seq_data")
 bam_files <- paste0(getwd(), "/", "Re-seq_bam")
 
 
@@ -197,7 +197,9 @@ write_csv(GeneCountTable, paste0(script_version, "/", "Unstranded_GeneCountTable
 
 
 # From this point on we can work with the clean gene count table
-GeneCountTable <- read.csv(file = paste0(script_version, "/", "Unstranded_GeneCountTable_re-seq", script_version, ".csv"))
+if (!exists("GeneCountTable", where = .GlobalEnv) && file.exists(paste0("Unstranded_GeneCountTable_re-seq", script_version, ".csv"))) {
+    GeneCountTable <- read.csv(file = paste0(script_version, "/", "Unstranded_GeneCountTable_re-seq", script_version, ".csv"))
+}
 head(GeneCountTable)
 
 
@@ -595,10 +597,10 @@ rm(CTC_meta.data_clean)
 
 
 # I set the lower cutoff here to 1000 genes (analysis tutorial, 250 genes, other sources 200 genes
-# Jonathan lower 500) and the upper cutoff to 7000 (Jonathan upper 5000) there seems to be no consensus
-# regarding this metric. I ultimately would not draw an upper limit as the population with
-# high gen/mRNA counts seem well integrated to the corresponding population. Regardless the advice is
-# that one should look the 3 parameter (nCount, nGene, MTratio) together and set the 
+# Jonathan lower 500) and the upper cutoff to 6500 (Jonathan upper 5000) there seems to be no consensus
+# regarding this metric. Later analysis showed that the population aove this cutoff clusters togeather,
+# probably the sign of multiple cells in one well, so the cutoff in my opinion is justified.
+# Regardless the advice is that one should look the 3 parameter (nCount, nGene, MTratio) together and set the 
 # thresholds accordingly (that is why I love the UvGplot)
 
 
