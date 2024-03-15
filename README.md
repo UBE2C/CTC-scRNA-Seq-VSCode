@@ -5,4 +5,4 @@ The samples were obtained from patients undergoing an experimental tartgeted alp
 
 The scritpt was written in R, in a VSCode/VSCodium friendly format.
 
-NOTE: Please note that the data, for whihc the script was built is not yet publicly available, as the associated publication is still under preparation.
+NOTE: Please note that the data, for which the script was built is not yet publicly available, as the associated publication is still under preparation.
