@@ -16,7 +16,7 @@
 cran_packages <- c("tidyverse", "stringi", "BiocManager",
               "scales", "RCurl", "cowplot", "rebus", "ggsci",
               "progress", "metap", "doSNOW", "foreach", "scCustomize",
-              "Matrix", "ggpubr", "R.utils", "devtools", "remotes", "RMTstat")
+              "Matrix", "ggpubr", "R.utils", "devtools", "remotes", "RMTstat", "rstudioapi")
 
 bioconductor_packages <- c("Seurat", "glmGamPoi", "multtest", "biomaRt", "AnnotationDbi",
               "EnsDb.Hsapiens.v86", "EnhancedVolcano", "graphite", "netgsa",
