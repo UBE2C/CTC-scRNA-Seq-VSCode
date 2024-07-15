@@ -112,13 +112,13 @@ define_version_create_folder = function() {
     }
     
     #check if the current version already has a folder or not and if not it creates one
-    if (dir.exists(paths = paste0("Analysis_", script_version, "/", "Plots")) == TRUE) {
+    if (dir.exists(paths = paste0("Analysis", script_version, "/", "Plots")) == TRUE) {
         message("The current script directory is already present. No new directory will be created.")
     } else {
         message("The current script vesrsion has no directorey yet.", "\n", "Creating one now using the path:", paste0(getwd(), "Analysis_", script_version, "/", "Plots"))
-        dir.create(path = paste0("Analysis_", script_version, "/", "Plots"), recursive = TRUE)
-        dir.create(path = paste0("Analysis_", script_version, "/", "GSEA_results"), recursive = TRUE)
-        dir.create(path = paste0("Analysis_", script_version, "/", "GSEA_results", "/", "Plots"), recursive = TRUE)
+        dir.create(path = paste0("Analysis", script_version, "/", "Plots"), recursive = TRUE)
+        dir.create(path = paste0("Analysis", script_version, "/", "GSEA_results"), recursive = TRUE)
+        dir.create(path = paste0("Analysis", script_version, "/", "GSEA_results", "/", "Plots"), recursive = TRUE)
         
     }
     assign("script_version", script_version, envir = .GlobalEnv)
