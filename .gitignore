@@ -1,0 +1,5 @@
+# Ignore the .gmt files
+Re-seq_bam/
+
+# Ignore the .DS_Store file
+.DS_Store
