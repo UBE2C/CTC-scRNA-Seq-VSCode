@@ -212,20 +212,20 @@ head(GeneCountTable)
 
 
 # Load the unified gene list if available, otherwise build it from scratch
-if (file.exists("Unified_gene_names_table.csv") && !exists("unified_gene_names_table", where = .GlobalEnv)) {
-    unif_gene_names <- read.csv(file = "Unified_gene_names_table.csv")
+if (file.exists(paste0("Additional_data_files", "/", "Unified_gene_names_table.csv")) && !exists("unified_gene_names_table", where = .GlobalEnv)) {
+    unif_gene_names <- read.csv(file = paste0("Additional_data_files", "/", "Unified_gene_names_table.csv"))
     message("The unified gene names table was found and loaded as: ", deparse(substitute(unified_gene_names_table)))
 } else {
     
     # Retrieving gene names using the ensembl IDs
     biomaRt::listEnsembl() #lists the available biomart keynames, here I need "gene"
-    biomaRt::ensembl <- useEnsembl(biomart = "genes") #creates an ensembl object needed for the database connection
-    datasets <- listDatasets(ensembl) #lists the organism based datasest from which we need to chose one for the db connection
-    ensembl_connection <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl") #this connects the database and the dataset for the search query
-    attributes <- listAttributes(ensembl_connection) #needed for the query, describes the desired info like gene names
-    filters <- listFilters(ensembl_connection) # needed for the query, defined by upon which data we search for(?) like here the ensemblIds
+    ensembl <- biomaRt::useEnsembl(biomart = "genes") #creates an ensembl object needed for the database connection
+    datasets <- biomaRt::listDatasets(ensembl) #lists the organism based datasest from which we need to chose one for the db connection
+    ensembl_connection <- biomaRt::useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl") #this connects the database and the dataset for the search query
+    attributes <- biomaRt::listAttributes(ensembl_connection) #needed for the query, describes the desired info like gene names
+    filters <- biomaRt::listFilters(ensembl_connection) # needed for the query, defined by upon which data we search for(?) like here the ensemblIds
     
-    gene_names <- getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
+    gene_names <- biomaRt::getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
                         filters = "ensembl_gene_id",
                         values = geneIDs,
                         mart = ensembl_connection)
@@ -239,10 +239,10 @@ if (file.exists("Unified_gene_names_table.csv") && !exists("unified_gene_names_t
     
     # An alternative method for gene id mapping if the direct query does not work properly
     # like shorter name list than id list...
-    keytypes(EnsDb.Hsapiens.v86)
-    columns(EnsDb.Hsapiens.v86)
+    AnnotationDbi::keytypes(EnsDb.Hsapiens.v86)
+    AnnotationDbi::columns(EnsDb.Hsapiens.v86)
     
-    gene_names_2 <- mapIds(x = EnsDb.Hsapiens.v86,
+    gene_names_2 <- AnnotationDbi::mapIds(x = EnsDb.Hsapiens.v86,
                            keys = unif_missing,
                            column = "SYMBOL",
                            keytype = "GENEID")
@@ -251,7 +251,7 @@ if (file.exists("Unified_gene_names_table.csv") && !exists("unified_gene_names_t
     colnames(gene_names_2) <- colnames(gene_names)
     clean_gene_names <- gene_names[stringi::stri_isempty(gene_names$external_gene_name) == FALSE, ]
     unif_gene_names <- rbind(clean_gene_names, gene_names_2)
-    unif_gene_names <- arrange(unif_gene_names, ensembl_gene_id)
+    unif_gene_names <- dplyr::arrange(unif_gene_names, ensembl_gene_id)
     
     
     # Removing unnecessary variables
@@ -259,17 +259,9 @@ if (file.exists("Unified_gene_names_table.csv") && !exists("unified_gene_names_t
     
     
     # Save the unified gene names for later
-    write_csv(x = unif_gene_names, file = "Unified_gene_names_table.csv")
+    write_csv(x = unif_gene_names, file = paste0("Additional_data_files", "/", "Unified_gene_names_table", script_version, ".csv"))
     
 }
-
-
-# Re-ordering the GeneCountTable (GCT) by rows to match the re-ordered unif_gene_names df (by ensembl IDs)
-# Removing the geneID column to allow ordering by sample (column) name and ordering the counts
-#oGCT <- arrange(GeneCountTable, geneID)
-#oGCT <- as.data.frame(oGCT)
-
-#rownames(oGCT) <- unif_gene_names$ensembl_gene_id #optional, to track which row is which gene without messing with the ordering
 
 
 
@@ -278,10 +270,10 @@ if (file.exists("Unified_gene_names_table.csv") && !exists("unified_gene_names_t
 
 
 # This if statement will check if the processes/extended metadata is present or not. If yes it will not run the following code chunk
-if (file.exists("Re-seq_sample_extended_fixed_updated_metadata_with_markers_V2.csv")) {
+if (file.exists(paste0("Additional_data_files", "/", "Re-seq_sample_extended_fixed_updated_metadata_with_markers_V2.csv"))) {
     message("The processed metadata file is already present in the working directory.",
     "\n", "No further processing will be done.") 
-} else if (file.exists("Re-seq_sample_extended_fixed_updated_metadata_with_markers_V2.csv")) {
+} else if (file.exists(paste0("Additional_data_files", "/", "Re-seq_sample_extended_fixed_updated_metadata_with_markers_V2.csv"))) {
     message("The extended metadata file is already present in the working directory.", 
     "\n", "No further processing will be done.")
 } else {
@@ -372,7 +364,7 @@ read_metadata <- function(path = getwd(), filename, sep) {
     assign("meta", meta, envir = .GlobalEnv)
     message("The metadata is loaded as the following object: meta")
 }
-read_metadata(filename = "Re-seq_sample_extended_fixed_updated_metadata_with_markers_V2.csv", sep = ";")
+read_metadata(filename = paste0("Additional_data_files", "/", "Re-seq_sample_extended_fixed_updated_metadata_with_markers_V2.csv"), sep = ";")
 glimpse(meta)
 head(meta)
 
@@ -392,7 +384,7 @@ glimpse(CTC_reseq.obj@meta.data)
 
 
 # Save the created new Seurat object
-saveRDS(object = CTC_reseq.obj, file = paste0(getwd(), "/", script_version, "/", "Original_CTC_Seurat_object", script_version, ".rds"))
+saveRDS(object = CTC_reseq.obj, file = paste0(getwd(), "/", analysis_dir, "/", "Original_CTC_Seurat_object", script_version, ".rds"))
 
 
 # Following the creation of the seurat object remove some not needed objects to save memory
@@ -414,7 +406,7 @@ if (exists("CTC_reseq.obj", where = .GlobalEnv)) {
     message("The CTC_reseq.obj is already present in the .GlobalEnv")
 } else {
     message("Loading the CTC_reseq.obj")
-    CTC_reseq.obj <- readRDS(file = paste0(getwd(), "/", script_version, "/", "Original_CTC_Seurat_object", script_version, ".rds"))
+    CTC_reseq.obj <- readRDS(file = paste0(getwd(), "/", analysis_dir, "/", "Original_CTC_Seurat_object", script_version, ".rds"))
 
 }
 
