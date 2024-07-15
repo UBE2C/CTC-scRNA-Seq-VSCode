@@ -122,6 +122,7 @@ define_version_create_folder = function() {
         
     }
     assign("script_version", script_version, envir = .GlobalEnv)
+    assign("analysis_dir", paste0("Analysis", script_version), envir = .GlobalEnv)
 }
 define_version_create_folder()
 
@@ -194,12 +195,12 @@ read_RPG.tabs(path = bam_files, filenames = "ReadsPerGene.out.tab", test_set = F
 
 
 # Writing the compiled GeneCountTable for future use, so it can be loaded directly
-write_csv(GeneCountTable, paste0(script_version, "/", "Unstranded_GeneCountTable_re-seq", script_version, ".csv"))
+write_csv(GeneCountTable, paste0(analysis_dir, "/", "Unstranded_GeneCountTable_re-seq", script_version, ".csv"))
 
 
 # From this point on we can work with the clean gene count table
 if (!exists("GeneCountTable", where = .GlobalEnv) && file.exists(paste0("Unstranded_GeneCountTable_re-seq", script_version, ".csv"))) {
-    GeneCountTable <- read.csv(file = paste0(script_version, "/", "Unstranded_GeneCountTable_re-seq", script_version, ".csv"))
+    GeneCountTable <- read.csv(file = paste0(analysis_dir, "/", "Unstranded_GeneCountTable_re-seq", script_version, ".csv"))
 }
 head(GeneCountTable)
 
