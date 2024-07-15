@@ -3,3 +3,6 @@ Re-seq_bam/
 
 # Ignore the .DS_Store file
 .DS_Store
+
+# Ignore the Analysis results dir
+Analysis_V*/
