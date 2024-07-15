@@ -4,5 +4,9 @@ Re-seq_bam/
 # Ignore the .DS_Store file
 .DS_Store
 
-# Ignore the Analysis results dir
+# Ignore various dirs
 Analysis_V*/
+Additional_data_files/
+
+# Ignore additional datafiles
+*.csv
