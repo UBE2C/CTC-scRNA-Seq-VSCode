@@ -10,6 +10,7 @@ Re-seq_bam/
 Analysis_V*/
 Additional_data_files/
 */
+.vscode/
 
 # Ignore additional datafiles
 *.csv
