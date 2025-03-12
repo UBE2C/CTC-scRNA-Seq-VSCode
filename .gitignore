@@ -1,9 +1,10 @@
 # Ignore the .bam files
 Re-seq_bam/
 
-# Ignore the .DS_Store file
+# Ignore the .DS_Store and other .data files
 .DS_Store
 .Rhistory
+.RData
 
 # Ignore various dirs
 Analysis_V*/
