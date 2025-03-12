@@ -3,10 +3,14 @@ Re-seq_bam/
 
 # Ignore the .DS_Store file
 .DS_Store
+.Rhistory
 
 # Ignore various dirs
 Analysis_V*/
 Additional_data_files/
+*/
 
 # Ignore additional datafiles
 *.csv
+*.sql
+*.pdf
