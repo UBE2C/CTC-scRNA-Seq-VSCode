@@ -958,20 +958,18 @@ rm(ccPhase_CTC.obj, CTC_reseq.obj)
 
 
 #################################################################   Final normalization and regressing out  ##################################################################
-#        sources of unwanted variation      #
+                                                                #        sources of unwanted variation      #
 
 
 
 
-## Normalization and clustering without integration
+## Normalization and clustering
 
 
 # As for the final more accurate method of normalization SCTransform, which is estimating the variance of the raw filtered data,
 # and identifying the most variable genes.
 
-
 # You might load the already prepared SCT transformed seurat object if available in the working directory
-# NOTE: V3.9 is used as the standard as this script was forked for the Monocle3 analysis, and general refactoring
 if (file.exists(paste0(getwd(), "/", analysis_dir, "/", "SCTransformed_fully_prepared_CTC_Seurat_object", script_version, ".rds")) && !exists(x = "sct_CTC.obj", where = .GlobalEnv)) {
   sct_CTC.obj <- readRDS(file = paste0(getwd(), "/", analysis_dir, "/", "SCTransformed_fully_prepared_CTC_Seurat_object", script_version, ".rds"))
   message("The standard SCTransformed Seurat object is present in the working directory and will be loaded as: ", deparse(substitute(sct_CTC.obj)))
@@ -985,13 +983,8 @@ if (file.exists(paste0(getwd(), "/", analysis_dir, "/", "SCTransformed_fully_pre
   }
   
   
-  # Try both the newer and older SCTransform version to see which one works better
-  # The newer version
+  # Run SCTransform 
   sct_CTC.obj <- SCTransform(filt_CTC.obj, assay = "RNA_seq", method = "glmGamPoi")
-  
-  # The older version
-  #sct_CTC.obj <- SCTransform(filt_CTC.obj, assay = "RNA_seq")
-  
   
   
   # Save the generated sCTransformed seurat object
@@ -1004,16 +997,8 @@ if (file.exists(paste0(getwd(), "/", analysis_dir, "/", "SCTransformed_fully_pre
                                   g2m.features = g2m.IDs$ensembl_gene_id, 
                                   set.ident = FALSE)
   
-  #summary(sct_CTC.obj@meta.data$mt.percent)
-  #sct_CTC.obj@meta.data$mtFr <- cut(sct_CTC.obj@meta.data$mt.percent,
-  #                                       breaks = c(-Inf, 9.1067, 15.4310, 26.4454, Inf),
-  #                                       labels = c("Low", "Medium", "Medium high", "High"))
   
-  
-  # NOTE: there seems to be some genes missing here after SCTransform, so I'm unsure how reliable this is
-  
-  
-  # An important thing to check is which PCs are responsible for the most variation. This is important
+  # Check how many PCs are responsible for the most variation. This is important
   # for the downstream steps. One way to check this is to plot the PCs with an ElbowPlot (plotting and saving the result)
   sct_CTC.obj <- RunPCA(sct_CTC.obj, assay = "SCT", approx = FALSE, verbose = FALSE, npcs = 50) #approx = FALSE to run with normal vsd method
   PC_weight_p <- ElbowPlot(sct_CTC.obj, ndims = 50, reduction = "pca")
@@ -1027,43 +1012,6 @@ if (file.exists(paste0(getwd(), "/", analysis_dir, "/", "SCTransformed_fully_pre
                   device = "png", path = paste0(analysis_dir, "/", "Plots/"),
                   width = 1500, height = 1000, units = "px", dpi = 320)
   rm(PC_weight_p, PC_weight_p2)
-  
-  
-  # Another way to determine how many PCs one wants to use is by using the PCAtools package
-  # NOTE: for the PCAtools to work one cannot use the seurat object itself, so some prep work is required
-  
-  
-  # For this check to work we will need to re-do the PCA with the PCATools. In order to reproduce the same PCA
-  # as we got with seurat we have to set the same seed as Seurat uses for the PCATools package and 
-  # pull the variance data from the SCTransformed object (from the SCT slot)
-  set.seed(42)
-  sct_variance <- sct_CTC.obj@assays$SCT@scale.data[VariableFeatures(sct_CTC.obj), ]
-  
-  
-  # Now that we set the seed and pulled the variance data we can run the pca
-  # NOTE: in order to reproduce the Seurat PCA properly wee need to specifying the approximation method Seurat uses (IrlbaParam()) 
-  # the number of PC's to retain (default is 50) and import the metadata for each cell (stored in slot @meta.data)
-  QC_PCA <- PCAtools::pca(sct_variance, rank = 50, BSPARAM = BiocSingular::IrlbaParam(), metadata = sct_CTC.obj@meta.data)
-  
-  
-  # Following the pca one can determine the number of PCs to keep using different methods:
-  # 1st - finding an elbow point (similar to what one would visually do)
-  PCAtools::findElbowPoint(QC_PCA$variance)
-  
-  # 2nd - using a parallel pca which will give the number of PCs to keep as $n
-  QC_PCA_par <- PCAtools::parallelPCA(sct_variance, max.rank = 50, BSPARAM = BiocSingular::IrlbaParam(), threshold = 0.05)
-  QC_PCA_par$n
-  
-  # 3rd - using the following methods
-  PCAtools::chooseMarchenkoPastur(sct_variance, var.explained =  QC_PCA$sdev^2, noise = 4)
-  PCAtools::chooseGavishDonoho(sct_variance, var.explained =  QC_PCA$sdev^2, noise = 4)
-  
-  # IMPORTANT NOTE: the various methods usually do not agree on how many PCs one should keep, so you probably should try a couple and
-  # see if the UMAP and clustering makes sense based on what you set or not...
-  
-  
-  # Unset seed
-  set.seed(NULL)
   
   
   # Running dimensionality reduction (trying both UMAP and tSNE :) )
@@ -1105,7 +1053,6 @@ if (file.exists(paste0(getwd(), "/", analysis_dir, "/", "SCTransformed_fully_pre
   
   # Re-run FindCluster with the preferred seeing
   sct_CTC.obj <- FindClusters(sct_CTC.obj, resolution = 0.6)
-  #sct_CTC.obj <- FindClusters(sct_CTC.obj, resolution = 1)
   
   
   # Saving the fully prepared CTC seurat object
