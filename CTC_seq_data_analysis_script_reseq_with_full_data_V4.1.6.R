@@ -1014,9 +1014,8 @@ if (file.exists(paste0(getwd(), "/", analysis_dir, "/", "SCTransformed_fully_pre
   rm(PC_weight_p, PC_weight_p2)
   
   
-  # Running dimensionality reduction (trying both UMAP and tSNE :) )
+  # Running dimensionality reduction
   sct_CTC.obj <- RunUMAP(sct_CTC.obj, dims = 1:20, reduction = "pca", verbose = FALSE)
-  sct_CTC.obj <- RunTSNE(sct_CTC.obj, dims = 1:20, reduction = "pca", perplexity = 5)
   
   
   # Finding neighbors and clustering
@@ -1042,10 +1041,6 @@ if (file.exists(paste0(getwd(), "/", analysis_dir, "/", "SCTransformed_fully_pre
   print(UMAP_p)
   rm(UMAP_p)
   
-  TSNE_p <- DimPlot(sct_CTC.obj, reduction = "tsne")
-  print(TSNE_p)
-  rm(TSNE_p)
-  
   PCA_p <- PCAPlot(sct_CTC.obj, reduction = "pca")
   print(PCA_p)
   rm(PCA_p)
@@ -1070,62 +1065,58 @@ if (file.exists(paste0(getwd(), "/", analysis_dir, "/", "SCTransformed_fully_pre
 
 
 # Cluster visualization (PCA, UMAP and t-SNE plots)
-cluster_colors <- pal_tron(palette = "legacy")(7)
+cluster_colors <- pal_tron(palette = "legacy", alpha = 0.5)(7)
 cluster_colors_2 <- pal_futurama(palette = "planetexpress")(12)
 cluster_colors_3 <- pal_startrek(palette = "uniform")(7)
 cluster_colors_4 <- pal_rickandmorty(palette = "schwifty")(12)
 
 
 # This function will print and save the dimensionality reduction plots
-plot_DR_cluster_2clust = function (sct_object, print_plots = TRUE, save_plots = TRUE) {
+plot_DR_cluster = function (sct_object, print_plots = TRUE, save_plots = TRUE) {
   
-  cluster_colors <- pal_tron(palette = "legacy")(7)
+  cluster_colors <- pal_tron(palette = "legacy", alpha = 0.5)(7)
   cluster_colors_2 <- pal_futurama(palette = "planetexpress")(12)
   cluster_colors_3 <- pal_startrek(palette = "uniform")(7)
   cluster_colors_4 <- pal_rickandmorty(palette = "schwifty")(12)
   
   # Create the PCA plot
-  PCA_p <- DimPlot(sct_object, reduction = "pca", group.by = "seurat_clusters")
+  PCA_p <- DimPlot(sct_object, 
+    reduction = "pca",
+    group.by = "seurat_clusters", 
+    pt.size = 5,
+    cols = ggsci::pal_tron(palette = "legacy", alpha = 0.5)(7)[c(6, 7)])
   PCA_p2 <- PCA_p +
-    scale_fill_manual(values = cluster_colors[c(6, 7)]) +
-    scale_color_manual(values = cluster_colors[c(6, 7)]) +
+    #scale_fill_manual(values = cluster_colors[c(6, 7)]) +
+    #scale_color_manual(values = cluster_colors[c(6, 7)]) +
     labs(x = "PC 1", y = "PC 2", color = "Clusters", fill = "Clusters") +
-    ggtitle("PCA plot") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("PCA plot") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   
   # Create the UMAP plot
-  UMAP_p <- DimPlot(sct_object, reduction = "umap", group.by = "seurat_clusters")
+  UMAP_p <- DimPlot(sct_object, 
+    reduction = "umap", 
+    group.by = "seurat_clusters",
+    pt.size = 5,
+    cols = ggsci::pal_tron(palette = "legacy", alpha = 0.5)(7)[c(6, 7)])
   UMAP_p2 <- UMAP_p +
-    scale_fill_manual(values = cluster_colors[c(6, 7)]) +
-    scale_color_manual(values = cluster_colors[c(6, 7)]) +
+    #scale_fill_manual(values = cluster_colors[c(6, 7)]) +
+    #scale_color_manual(values = cluster_colors[c(6, 7)]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
-    ggtitle("UMAP plot") +
+    #ggtitle("UMAP plot") +
     ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
   
-  
-  # Create the TSNE plot
-  TSNE_p <- DimPlot(sct_object, reduction = "tsne", group.by = "seurat_clusters")
-  TSNE_p2 <- TSNE_p +
-    scale_fill_manual(values = cluster_colors[c(6, 7)]) +
-    scale_color_manual(values = cluster_colors[c(6, 7)]) +
-    labs(x = "tSNE 1", y = "tSNE 2", color = "Clusters", fill = "Clusters") +
-    ggtitle("tSNE plot") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
-  
-  
-  
+
   # This if statement controls if the plost will be saved
   if (save_plots == TRUE) {
     
     ggsave(filename = paste0("PCA_clustering_gb", script_version, ".png"), PCA_p2,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_clustering_gb", script_version, ".png"), UMAP_p2,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
-    
-    ggsave(filename = paste0("TSNE_clustering_gb", script_version, ".png"), TSNE_p2,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     message("The plots were saved to the folder: ", paste0(analysis_dir, "/", "Plots/"))
     
@@ -1141,7 +1132,6 @@ plot_DR_cluster_2clust = function (sct_object, print_plots = TRUE, save_plots = 
     
     print(PCA_p2)
     print(UMAP_p2)
-    print(TSNE_p2)
     
     message("The plots were printed as requested.")
     
@@ -1154,7 +1144,7 @@ plot_DR_cluster_2clust = function (sct_object, print_plots = TRUE, save_plots = 
   
   
 }
-plot_DR_cluster_2clust(sct_object = sct_CTC.obj, print_plots = TRUE, save_plots = TRUE)
+plot_DR_cluster(sct_object = sct_CTC.obj, print_plots = TRUE, save_plots = TRUE)
 
 
 # Removing unnecessary objects
@@ -1168,7 +1158,7 @@ rm(g2m.IDs, s.IDs, MT_genes, QC_PCA, QC_PCA_par, filt_CTC.obj, sct_variance)
 
 
 #################################################################   Plotting different metrics over the UMAP  ##################################################################
-#         clusters to if they correlate       #
+                                                                #         clusters to if they correlate       #
 
 
 # Defining a color for gradient plots
@@ -1179,7 +1169,7 @@ grad_col <- pal_locuszoom("default")(7)
 plot_UMAP_ovelrays = function (print_plots = TRUE, save_plots = TRUE) {
   
   # Define the used color plalettes
-  grad_col <- pal_locuszoom("default")(7)
+  grad_col <- pal_locuszoom("default", alpha = 0.5)(7)
   cluster_colors <- pal_tron(palette = "legacy")(7)
   cluster_colors_2 <- pal_futurama(palette = "planetexpress")(12)
   cluster_colors_3 <- pal_startrek(palette = "uniform")(7)
@@ -1188,121 +1178,140 @@ plot_UMAP_ovelrays = function (print_plots = TRUE, save_plots = TRUE) {
   # Overlaying nFeature
   UMAP_nF_p <- FeaturePlot(sct_CTC.obj,
                            reduction = "umap",
-                           features = "nFeature_SCT")
+                           features = "nFeature_SCT",
+                           pt.size = 5)
   UMAP_nF_p2 <- UMAP_nF_p +
     #scale_color_gradient(low = "lightgrey", high = cluster_colors[7]) +
     scale_color_gradient(low = "lightgrey", high = grad_col[5]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
-    ggtitle("UMAP plot - nFeatures") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - nFeatures") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   # Overlaying nCount
   UMAP_nC_p <- FeaturePlot(sct_CTC.obj,
                            reduction = "umap",
-                           features = "nCount_SCT")
+                           features = "nCount_SCT",
+                           pt.size = 5)
   UMAP_nC_p2 <- UMAP_nC_p +
     scale_color_gradient(low = "lightgrey", high = grad_col[5]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
-    ggtitle("UMAP plot - nCounts") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - nCounts") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   # Overlay mt.percent
   UMAP_mt.percent <- FeaturePlot(sct_CTC.obj,
                                  reduction = "umap",
-                                 features = "mt.percent")
+                                 features = "mt.percent",
+                                 pt.size = 5)
   UMAP_mt.percent2 <- UMAP_mt.percent +
     scale_color_gradient(low = "lightgrey", high = grad_col[5]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Clusters", fill = "Clusters") +
-    ggtitle("UMAP plot - MT gene expression") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - MT gene expression") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   # Overlay cell cycle
   UMAP_CellCyc <- DimPlot(sct_CTC.obj,
                           reduction = "umap",
-                          group.by = "Phase")
+                          group.by = "Phase",
+                          pt.size = 5,
+                          cols = ggsci::pal_startrek(palette = "uniform", alpha = 0.5)(7)[c(4, 5, 7)])
   UMAP_CellCyc2 <- UMAP_CellCyc +
-    scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+    #scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+    #scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Cell cycle phase", fill = "Cell cycle phase") +
-    ggtitle("UMAP plot - Cell cycle phases") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - Cell cycle phases") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   # Overlay treatment cycle
   UMAP_TreatCyc <- DimPlot(sct_CTC.obj,
                            reduction = "umap",
-                           group.by = "RealCycle")
+                           group.by = "RealCycle",
+                           pt.size = 5,
+                           cols = ggsci::pal_startrek(palette = "uniform", alpha = 0.5)(7)[c(4, 5, 7)])
   UMAP_TreatCyc2 <- UMAP_TreatCyc +
-    scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+    #scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+    #scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Treatment cycles", fill = "Treatment cycles") +
-    ggtitle("UMAP plot - Treatment cycles") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - Treatment cycles") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   # Overlay treatment type
   UMAP_TreatType <- DimPlot(sct_CTC.obj,
                             reduction = "umap",
-                            group.by = "Treatment")
+                            group.by = "Treatment",
+                            pt.size = 5,
+                            cols = ggsci::pal_startrek(palette = "uniform", alpha = 0.5)(7)[c(4, 5, 7)])
   UMAP_TreatType2 <- UMAP_TreatType +
-    scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+    #scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+    #scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Treatment", fill = "Treatment") +
-    ggtitle("UMAP plot - Treatment types") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - Treatment types") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   # Overlay RespGroup
   UMAP_RespG <- DimPlot(sct_CTC.obj,
                         reduction = "umap",
-                        group.by = "RespGroup")
+                        group.by = "RespGroup",
+                        pt.size = 5,
+                        cols = ggsci::pal_tron(palette = "legacy", alpha = 0.5)(7)[c(1, 2)])
   UMAP_RespG2 <- UMAP_RespG +
-    scale_fill_manual(values = cluster_colors[c(1, 2)]) +
-    scale_color_manual(values = cluster_colors[c(1, 2)]) +
+    #scale_fill_manual(values = cluster_colors[c(1, 2)]) +
+    #scale_color_manual(values = cluster_colors[c(1, 2)]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Response group", fill = "Response group") +
-    ggtitle("UMAP plot - Response groups") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - Response groups") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   # Overlay Detailed response
   UMAP_DetRespG <- DimPlot(sct_CTC.obj,
                            reduction = "umap",
-                           group.by = "detailedResp")
+                           group.by = "detailedResp",
+                           pt.size = 5,
+                           cols = ggsci::pal_tron(palette = "legacy", alpha = 0.5)(7)[c(5, 1, 2, 3)])
   UMAP_DetRespG2 <- UMAP_DetRespG +
-    scale_fill_manual(values = cluster_colors[c(5, 1, 2, 3)]) +
-    scale_color_manual(values = cluster_colors[c(5, 1, 2, 3)]) +
+    #scale_fill_manual(values = cluster_colors[c(5, 1, 2, 3)]) +
+    #scale_color_manual(values = cluster_colors[c(5, 1, 2, 3)]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Response profile", fill = "Response profile") +
-    ggtitle("UMAP plot - Detailed treatment response") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - Detailed treatment response") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
-  # Overlay Luthetium-177 doses
+  # Overlay Luthetium-177 doses 
   UMAP_Lu <- DimPlot(sct_CTC.obj,
                      reduction = "umap",
-                     group.by = "Lu177_GBq")
+                     group.by = "Lu177_GBq",
+                     pt.size = 5,
+                     cols = ggsci::pal_rickandmorty(palette = "schwifty", alpha = 0.5)(12)[c(4, 5, 6, 7, 8, 9)])
   UMAP_Lu2 <- UMAP_Lu +
-    scale_fill_manual(values = cluster_colors_4[c(4, 5, 6, 7, 8, 9)]) +
-    scale_color_manual(values = cluster_colors_4[c(4, 5, 6, 7, 8, 9)]) +
+    #scale_fill_manual(values = cluster_colors_4[c(4, 5, 6, 7, 8, 9)]) +
+    #scale_color_manual(values = cluster_colors_4[c(4, 5, 6, 7, 8, 9)]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Lu-177 doses (GBq)", fill = "Lutetium-177 doses (GBq)") +
-    ggtitle("UMAP plot - Lu-177 treatment doses") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - Lu-177 treatment doses") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   # Overlay Actinium-225 doses
   UMAP_Ac <- DimPlot(sct_CTC.obj,
                      reduction = "umap",
-                     group.by = "Ac225_MBq")
+                     group.by = "Ac225_MBq",
+                     pt.size = 5,
+                     cols = ggsci::pal_rickandmorty(palette = "schwifty", alpha = 0.5)(12)[c(4, 5, 6, 7)])
   UMAP_Ac2 <- UMAP_Ac +
-    scale_fill_manual(values = cluster_colors_4[c(4, 5, 6, 7)]) +
-    scale_color_manual(values = cluster_colors_4[c(4, 5, 6, 7)]) +
+    #scale_fill_manual(values = cluster_colors_4[c(4, 5, 6, 7)]) +
+    #scale_color_manual(values = cluster_colors_4[c(4, 5, 6, 7)]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Ac-225 doses (MBq)", fill = "Ac-225 doses (MBq)") +
-    ggtitle("UMAP plot - Ac-225 treatment doses") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - Ac-225 treatment doses") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   # Overlay marker status
   UMAP_MarkerStat <- DimPlot(sct_CTC.obj,
                              reduction = "umap",
-                             group.by = "Marker_status")
+                             group.by = "Marker_status",
+                             pt.size = 5,
+                             cols = ggsci::pal_startrek(palette = "uniform", alpha = 0.5)(7)[c(4, 5, 7)])
   UMAP_MarkerStat2 <- UMAP_MarkerStat +
-    scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
-    scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+    #scale_fill_manual(values = cluster_colors_3[c(4, 5, 7)]) +
+    #scale_color_manual(values = cluster_colors_3[c(4, 5, 7)]) +
     labs(x = "UMAP 1", y = "UMAP 2", color = "Marker status", fill = "Marker status") +
-    ggtitle("UMAP plot - Surface marker distribution") +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+    #ggtitle("UMAP plot - Surface marker distribution") +
+    ggplot2::theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
   
   
   
@@ -1336,47 +1345,47 @@ plot_UMAP_ovelrays = function (print_plots = TRUE, save_plots = TRUE) {
     
     ggsave(filename = paste0("UMAP_nFeature", script_version, ".png"), UMAP_nF_p2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_nCount", script_version, ".png"), UMAP_nC_p2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_mt.percent", script_version, ".png"), UMAP_mt.percent2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_Cell_cycle", script_version, ".png"), UMAP_CellCyc2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_Treatment_cycles", script_version, ".png"), UMAP_TreatCyc2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_Treatment_type", script_version, ".png"), UMAP_TreatType2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_Response_group", script_version, ".png"), UMAP_RespG2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_Detailed_treatment_response", script_version, ".png"), UMAP_DetRespG2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_Lu-177_treatment_doses", script_version, ".png"), UMAP_Lu2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_Ac-225_treatment_doses", script_version, ".png"), UMAP_Ac2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     
     ggsave(filename = paste0("UMAP_Marker_Status", script_version, ".png"), UMAP_MarkerStat2,
            device = "png", path = paste0(analysis_dir, "/", "Plots/"),
-           width = 1500, height = 1000, units = "px", dpi = 320)
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(UMAP_MarkerStat, UMAP_MarkerStat2)
     
     
