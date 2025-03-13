@@ -1161,10 +1161,6 @@ rm(g2m.IDs, s.IDs, MT_genes, QC_PCA, QC_PCA_par, filt_CTC.obj, sct_variance)
                                                                 #         clusters to if they correlate       #
 
 
-# Defining a color for gradient plots
-grad_col <- pal_locuszoom("default")(7)
-
-
 # This function simply runs a block of code, plotting and saving additional data overplayed on the UMAP (the only purpose of this is conciseness)
 plot_UMAP_ovelrays = function (print_plots = TRUE, save_plots = TRUE) {
   
@@ -1409,8 +1405,8 @@ plot_UMAP_ovelrays(print_plots = TRUE, save_plots = TRUE)
 # This function will calculate cluster composition stats and plots and saves them as requested (the only purpose of this is conciseness)
 calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_statistics = TRUE, print_statistics = TRUE) {
   
-  # Preparing the main dataframe for the visualization
-  #head(sct_CTC.obj@meta.data)
+  # Define the color palette for plotting
+  cluster_colors <- ggsci::pal_tron(palette = "legacy")(7)
   
   sct_CTC_meta_df <- sct_CTC.obj@meta.data
   sct_CTC_meta_df$TreatmentStatus <- ifelse(sct_CTC_meta_df$RealCycle == 0, "Non-treated", "Treated")
@@ -1926,27 +1922,6 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
     }
     
     
-    #print(Treatment_cycles_summary_df)
-    #print(Treatment_cycles_summary_df_long)
-    #print(Treatment_summary_df)
-    #print(Treatment_summary_df_long)
-    #print(Cell_cycle_summary_df)
-    #print(Response_summary_df)
-    #print(Response_summary_df_long)
-    #print(Surface_marker_summary_df)
-    #print(Surface_marker_summary_df_long)
-    #print(Treatment_cycles_summary_df_clust)
-    #print(Treatment_cycles_summary_df_clust_long)
-    #print(Treatment_summary_df_clust)
-    #print(Treatment_summary_df_clust_long)
-    #print(Cell_cycle_summary_df_clust)
-    #print(Cell_cycle_summary_df_clust_long)
-    #print(Response_summary_df_clust)
-    #print(Response_summary_df_clust_long)
-    #print(Surface_marker_summary_df_clust)
-    #print(Surface_marker_summary_df_clust_long)
-    
-    
     # Return statistics message
     message("Return statistcs was requested, the stat tables were assigned to a new list: stat_lists")
     
@@ -1969,15 +1944,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
       scale_fill_manual(values = cluster_colors[c(6, 7)], label = c("Cluster 0", "Cluster 1")) +
       labs(fill = "CTC cluster", x = expression("Treatment cycle"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on treatment cycle") +
+      #ggtitle("CTC clusters - cell distribution based on treatment cycle") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(treatment_cyc_bar_p)
     
     ggsave(filename = paste0("Treatment cycles in clusters", script_version, ".png"), treatment_cyc_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(treatment_cyc_bar_p)
     
     
@@ -1990,15 +1966,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
       scale_fill_manual(values = cluster_colors[c(6, 7)], label = c("Cluster 0", "Cluster 1")) +
       labs(fill = "CTC cluster", x = expression("Treatment type"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on treatment types") +
+      #ggtitle("CTC clusters - cell distribution based on treatment types") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(treatment_type_bar_p)
     
     ggsave(filename = paste0("Treatment types over clusters", script_version, ".png"), treatment_type_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(treatment_type_bar_p)
     
     
@@ -2011,15 +1988,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
       scale_fill_manual(values = cluster_colors[c(6, 7)], label = c("Cluster 0", "Cluster 1")) +
       labs(fill = "CTC cluster", x = expression("Cell cycle phase"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on cell cycle phase") +
+      #ggtitle("CTC clusters - cell distribution based on cell cycle phase") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(cell_cyc_bar_p)
     
     ggsave(filename = paste0("Cell cycle over clusters", script_version, ".png"), cell_cyc_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(cell_cyc_bar_p)
     
     
@@ -2032,15 +2010,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
       scale_fill_manual(values = cluster_colors[c(6, 7)], label = c("Cluster 0", "Cluster 1")) +
       labs(fill = "CTC cluster", x = expression("Response group"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on treatment response") +
+      #ggtitle("CTC clusters - cell distribution based on treatment response") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(response_group_bar_p)
     
     ggsave(filename = paste0("Treatment response over clusters", script_version, ".png"), response_group_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(response_group_bar_p)
     
     
@@ -2053,15 +2032,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
       scale_fill_manual(values = cluster_colors[c(6, 7)], label = c("Cluster 0", "Cluster 1")) +
       labs(fill = "CTC cluster", x = expression("Treatment status"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on treatment status") +
+      #ggtitle("CTC clusters - cell distribution based on treatment status") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(treatment_group_bar_p)
     
     ggsave(filename = paste0("Treatment status over clusters", script_version, ".png"), treatment_group_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(treatment_group_bar_p)
     
     
@@ -2074,15 +2054,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
       scale_fill_manual(values = cluster_colors[c(6, 7)], label = c("Cluster 0", "Cluster 1")) +
       labs(fill = "CTC cluster", x = expression("Detailed treatment response"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on detailed treatment response") +
+      #ggtitle("CTC clusters - cell distribution based on detailed treatment response") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(detailed_response_bar_p)
     
     ggsave(filename = paste0("Detailed treatment response over clusters", script_version, ".png"), detailed_response_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(detailed_response_bar_p)
     
     
@@ -2095,15 +2076,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
       scale_fill_manual(values = cluster_colors[c(6, 7)], label = c("Cluster 0", "Cluster 1")) +
       labs(fill = "CTC cluster", x = expression("Surface marker status"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on the surface marker status") +
+      #ggtitle("CTC clusters - cell distribution based on the surface marker status") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(surface_marker_bar_p)
     
     ggsave(filename = paste0("Surface marker over clusters", script_version, ".png"), surface_marker_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(surface_marker_bar_p)
     
     
@@ -2116,15 +2098,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       scale_x_discrete(labels = c("Cluster 0", "Cluster 1", "Cluster 2")) +
       scale_fill_manual(values = cluster_colors[c(4, 6, 7)], label = c("Cycle 0", "Cycle 1", "Cycle 2")) +
       labs(fill = "Treatment cycles", x = expression("CTC clusters"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on treatment cycle") +
+      #ggtitle("CTC clusters - cell distribution based on treatment cycle") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(treatment_cyc_bar_p)
     
     ggsave(filename = paste0("Cluster_composition-Treatment_cycles", script_version, ".png"), treatment_cyc_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(treatment_cyc_bar_p)
     
     
@@ -2137,15 +2120,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       scale_x_discrete(labels = c("Cluster 0", "Cluster 1", "Cluster 2")) +
       scale_fill_manual(values = cluster_colors[c(4, 6, 7)], label = c("NT", "AL", "L")) +
       labs(fill = "Treatment types", x = expression("CTC clusters"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on treatment types") +
+      #ggtitle("CTC clusters - cell distribution based on treatment types") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(treatment_type_bar_p)
     
     ggsave(filename = paste0("Cluster_composition-Treatment_types", script_version, ".png"), treatment_type_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(treatment_type_bar_p)
     
     
@@ -2157,16 +2141,17 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       scale_y_continuous(limits = c(0, 100), breaks = c(0, 20, 40, 60, 80, 100)) +
       scale_x_discrete(labels = c("Cluster 0", "Cluster 1", "Cluster 2")) +
       scale_fill_manual(values = cluster_colors[c(4, 6, 7)], label = c("G1", "S", "G2/M")) +
-      labs(fill = "Cell cycle phase", x = expression("CTC cluster"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on cell cycle phase") +
+      labs(fill = "Cell cycle \nphase", x = expression("CTC cluster"), y = expression("Cell number percentages")) +
+      #ggtitle("CTC clusters - cell distribution based on cell cycle phase") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(cell_cyc_bar_p)
     
     ggsave(filename = paste0("Cluster_composition-Cell_cycle_phases", script_version, ".png"), cell_cyc_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(cell_cyc_bar_p)
     
     
@@ -2179,15 +2164,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       scale_x_discrete(labels = c("Cluster 0", "Cluster 1")) +
       scale_fill_manual(values = cluster_colors[c(2, 1)], label = c("Responder", "Nonresponder")) +
       labs(fill = "Response group", x = expression("CTC cluster"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on treatment response") +
+      #ggtitle("CTC clusters - cell distribution based on treatment response") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(response_group_bar_p)
     
     ggsave(filename = paste0("Cluster_composition-Response_groups", script_version, ".png"), response_group_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(response_group_bar_p)
     
     
@@ -2200,16 +2186,17 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       scale_x_discrete(labels = c("Cluster 0", "Cluster 1")) +
       scale_fill_manual(values = cluster_colors[c(2, 1)], label = c("Non-treated", "Treated")) +
       labs(fill = "Treatment status", x = expression("CTC cluster"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on treatment response") +
+      #ggtitle("CTC clusters - cell distribution based on treatment response") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(treatment_status_bar_p)
     
     ggsave(filename = paste0("Cluster_composition-Treatment_status
                              ", script_version, ".png"), treatment_status_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(treatment_status_bar_p)
     
     
@@ -2221,17 +2208,18 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       scale_y_continuous(limits = c(0, 100), breaks = c(0, 20, 40, 60, 80, 100)) +
       scale_x_discrete(labels = c("Cluster 0", "Cluster 1")) +
       scale_fill_manual(values = cluster_colors[c(5, 1, 2, 3)], label = c("NT", "PD", "PR", "SD")) +
-      labs(fill = "Detailed treatment response", x = expression("CTC cluster"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on detailed treatment response") +
+      labs(fill = "Detailed treatment \nresponse", x = expression("CTC cluster"), y = expression("Cell number percentages")) +
+      #ggtitle("CTC clusters - cell distribution based on detailed treatment response") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(detailed_response_group_bar_p)
     
     ggsave(filename = paste0("Cluster_composition-Detailed_treatment_response", script_version, ".png"), detailed_response_group_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
-    rm(response_group_bar_p)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
+    rm(detailed_response_group_bar_p)
     
     
     # Plotting the surface marker distribution from the cluster view
@@ -2243,15 +2231,16 @@ calculate_and_plot_cluster_composition = function (make_plots = TRUE, return_sta
       scale_x_discrete(labels = c("Cluster 0", "Cluster 1", "Cluster 2")) +
       scale_fill_manual(values = cluster_colors[c(4, 6, 7)], label = c("EpCAM+", "EpCAM+PSMA+", "PSMA+")) +
       labs(fill = "Treatment cycles", x = expression("CTC clusters"), y = expression("Cell number percentages")) +
-      ggtitle("CTC clusters - cell distribution based on surface markers") +
+      #ggtitle("CTC clusters - cell distribution based on surface markers") +
       #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
       theme_classic() +
       theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-            strip.text = element_blank(), text = element_text(size = 18))
+            strip.text = element_blank(), text = element_text(size = 24))
     print(surface_m_bar_p)
     
     ggsave(filename = paste0("Cluster_composition-Surface_markers", script_version, ".png"), surface_m_bar_p,
-           device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+           device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+           width = 3000, height = 1800, units = "px", dpi = 320)
     rm(surface_m_bar_p)
     
     
@@ -2416,115 +2405,6 @@ calculating_association_stats = function (stat_list, return_contingency_tables =
   
 }
 calculating_association_stats(stat_list = stat_lists, return_contingency_tables = TRUE, return_statisctics = TRUE, print_statistics = TRUE)
-
-
-# This is the Xi-square goodness of fit test, required to compare distributions. It does the comparison based on expected and observed distribution,
-# and returns the test statistics with a p-value.
-# NOTE: the H0 here is that the different attributes we are looking at have no effect on the clustering, and we would expect an equal distribution between the
-# clusters. The test checks if this holds true.
-calculate_goodness_of_fit_var <- function(stat_list, print_statistics = TRUE) {
-  
-  output_list <- vector(mode = "list", length = 1)
-  
-  
-  GOF_res <- vector(mode = "list", length = length(stat_list[[1]]))
-  #GOF_c1_res <- vector(mode = "list", length = length(stat_list[[1]]))
-  
-  for (i in seq_along(stat_list[[1]])) {
-    
-    p_vector <- rep(1/2, 2)
-    
-    for (e in seq_len(nrow(stat_list[[1]][[i]]))) {
-      
-      GOF_res[[i]][[e]] <- chisq.test(stat_list[[1]][[i]][e, c(3, 4)], p = p_vector)
-      
-      names(GOF_res[[i]]) <- names(rownames(stat_list[[1]][[i]]))
-      
-    }
-    
-    
-    
-    
-  }
-  
-  names(GOF_res) <- names(stat_list[[1]])
-  
-  output_list[[1]] <- GOF_res
-  
-  
-  ## This if statement controls if the stats and contingency tables are printed
-  if (print_statistics == TRUE) {
-    
-    print(output_list)
-    
-  } else {
-    
-    message("As requested, the stat results will not be printed.")
-    
-  }
-  
-  
-  return(output_list)
-  
-}
-association_stats_var <- calculate_goodness_of_fit_var(stat_lists)
-
-
-calculate_goodness_of_fit_clust <- function(stat_list, print_statistics = TRUE) {
-  
-  output_list <- vector(mode = "list", length = 2)
-  
-  
-  GOF_c0_res <- vector(mode = "list", length = length(stat_list[[1]]))
-  GOF_c1_res <- vector(mode = "list", length = length(stat_list[[1]]))
-  
-  for (i in seq_along(stat_list[[1]])) {
-    
-    if (length(stat_list[[1]][[i]][, 3]) == 2) {
-      
-      p_vector <- rep((1/2), 2)
-      
-    } else if (length(stat_list[[1]][[i]][, 3]) == 3) {
-      
-      p_vector <- rep((1/3), 3)
-      
-    } else {
-      
-      p_vector <- rep((1/4), 4)
-      
-    }
-    
-    GOF_c0_res[[i]] <- chisq.test(stat_list[[1]][[i]][, 3], p = p_vector)
-    GOF_c1_res[[i]] <- chisq.test(stat_list[[1]][[i]][, 4], p = p_vector)
-    
-  }
-  
-  names(GOF_c0_res) <- names(stat_list[[1]])
-  names(GOF_c1_res) <- names(stat_list[[1]])
-  
-  
-  output_list[[1]] <- GOF_c0_res
-  output_list[[2]] <- GOF_c1_res
-  
-  names(output_list) <- c("GOF_c0_res", "GOF_c1_res")
-  
-  
-  ## This if statement controls if the stats and contingency tables are printed
-  if (print_statistics == TRUE) {
-    
-    print(output_list)
-    
-  } else {
-    
-    message("As requested, the stat results will not be printed.")
-    
-  }
-  
-  
-  return(output_list)
-  
-}
-association_stats_clust <- calculate_goodness_of_fit_clust(stat_lists)
 
 
 # Save the results (use capture.output of print to get the nice format)
