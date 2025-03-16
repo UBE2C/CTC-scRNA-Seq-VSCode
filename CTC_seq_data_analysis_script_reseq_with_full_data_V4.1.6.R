@@ -2434,7 +2434,7 @@ rm(stat_lists, association_stat_res)
 
 
 #################################################################   Differential gene expression analysis  ##################################################################
-#                                          #
+                                                                #                                          #
 
 
 # Finding differentially expressed (DE) genes using the FindMarkers function to compare two
@@ -2530,47 +2530,13 @@ head(DE_RespvNonresp_geneNames)
 # Saving the list of RespvsNonresp DEG markers
 write_csv(x = DE_RespvNonresp_geneNames, file = paste0(analysis_dir, "/", "DE_RespvNonresps_geneNames", script_version, ".csv"))
 
-
-# Checking if there is differential expression between treatment cycles
-Idents(sct_CTC.obj) <- "RealCycle"
-DE_TreatmentCycles <- FindAllMarkers(sct_CTC.obj, assay = "SCT")
-
-head(DE_TreatmentCycles)
-summary(DE_TreatmentCycles$p_val_adj)
-
-print(dplyr::filter(DE_TreatmentCycles, cluster == "0", p_val_adj <= 0.05))
-print(dplyr::filter(DE_TreatmentCycles, cluster == "1", p_val_adj <= 0.05))
-print(dplyr::filter(DE_TreatmentCycles, cluster == "2", p_val_adj <= 0.05))
-
-# NOTE: I checked each treatment cycle separately to see where the difference come form, and it seems that there is no significant difference
-# between Cycle 0 - 2 and Cycle 1 - 2, only between Cycle 0 - 1, however here the p_val_adj values are different.
-# To try to deal with this I will run a simple FindMarkers with Cycle 0 and Cycle 1 as identities.
-
-
-# Checking if there is differential expression between treatment cycles 0 and 1
-DE_TreatmentCycles_0v1 <- Seurat::FindMarkers(sct_CTC.obj, ident.1 = "0", ident.2 = "1", assay = "SCT")
-
-
-# Gene name matching with treatment cycle DEG markers
-geneName_matching_par_V2(DE_lst = DE_TreatmentCycles_0v1, gene_lst = unif_gene_names, ID_col = "ensembl_gene_id", name_col = "external_gene_name", n_cores = 5)
-head(DE_TreatmentCycles_0v1_geneNames)
-
-
-# Saving the list of treatment cycle DEG markers
-write_csv(x = DE_TreatmentCycles_0v1_geneNames, file = paste0(analysis_dir, "/", "DE_TreatmentCycles_geneNames", script_version, ".csv"))
-
-
 # Remove unnecessary objects
 rm(DE_RespvNonresp, CON_Cluster_0v1, CON_Cluster_0v1_geneNames)
 
 
 
 
-## Assigning ENTREZ IDs to the DE gene list
-
-
-# NOTE: this step will be needed later anyway for the SPIA analysis. For now I want to see how the DE list and GSEA will look like
-# if I use ENTREZ IDs instead of gene names (in this case, only annotated genes should appear, no pseudo genes)
+## Assigning ENTREZ IDs to the DE gene list for future utility and eas of use
 
 
 # This if Statment will check if the final version of the UnifiedEntrezIds df is present in the main working directory. If yes,
@@ -2781,98 +2747,8 @@ if (exists("unifiedEntrezIDs", where = .GlobalEnv)) {
 }
 
 
-# Attaching ENTREZ IDs to the DE gene lists using the following functions
-# This is the original, well trusted for loop based implementation
-entrezID_matching = function (DE_lst, entrezID_lst, ENSEMBL_ID_col, ENTREZ_ID_col, new_object_name = NA) {
-  progressBar <- progress::progress_bar$new(format = "(:spin) [:bar] :percent [Elapsed time: :elapsedfull || Estimated time remaining: :eta]",
-                                            total = nrow(DE_lst),
-                                            complete = "=",
-                                            incomplete = "-",
-                                            current = ">",
-                                            clear = FALSE,
-                                            width = 100)
-  position <- c()
-  for(i in seq_along(rownames(DE_lst))) {
-    progressBar$tick()
-    
-    position <-  grep(rownames(DE_lst)[i], entrezID_lst[, ENSEMBL_ID_col])
-    DE_lst$entrezID[i] <- entrezID_lst[, ENTREZ_ID_col][position]
-    
-  }
-  
-  # This new if statment allows the user to specify a new object anme, but could just go with the standard nameing
-  # the function uses
-  if(is.na(new_object_name)) {
-    original_name <- deparse(substitute(DE_lst))
-    output_name <- paste0(original_name, "_", "entrezIDs")
-  } else {
-    output_name <- new_object_name
-  }
-  
-  assign(output_name, DE_lst, envir = .GlobalEnv)
-  message("The entrezID matched ", DE_lst, " list was assigned to a new object named:", "/n", output_name)
-}
-
-# NOTE: this for loop is highly time and resource intensive and will take over 5 minutes to run.
-# in exchange however it will insert a positionally accurate name for the DE genes in a well understood manner
-
-
-# This is the parallelized version of the matching function and the upgraded V2, which should work with the FindAllMarkers output
-entrezID_matching_par = function (DE_lst, entrezID_lst, ENSEMBL_ID_col, ENTREZ_ID_col, n_cores = 2, new_object_name = NA) {
-  # Initializing the progress bar
-  progressBar <- progress::progress_bar$new(format = "Progress = (:spin) [:bar] :percent [Elapsed time: :elapsedfull || Estimated time remaining: :eta]",
-                                            total = nrow(DE_lst),
-                                            complete = "=",
-                                            incomplete = "-",
-                                            current = ">",
-                                            clear = FALSE,
-                                            width = 100)
-  
-  # This part is necessary for the proper functioning of the progress bar together with the foreach function
-  prog_range <- seq_len(nrow(DE_lst))
-  progress = function(n) {
-    progressBar$tick(tokens = list(Progress = prog_range[n]))
-  }
-  
-  # This section is foreach specific and is required in order to visualize the progress bar
-  # with the foreach function
-  opts <- list(progress = progress)
-  
-  # This part defines the number of cores which should be used and registers them as sockets
-  cores <- n_cores
-  clust <- parallel::makeCluster(cores)
-  doSNOW::registerDoSNOW(cl = clust)
-  
-  # Here I define the foreach package and am trying to import hte dopar keyword from it
-  # as otherwise it does not seem to work in VS Code
-  #' @importFrom foreach %dopar%
-  
-  # Here I set up the foreach loop (which should be able to do the parallelized run)
-  position <- c()
-  out <- c()
-  entrezIDs <- foreach::foreach(i = seq_len(nrow(DE_lst)), .options.snow = opts, .combine = c) %dopar% {
-    position <- grep(rownames(DE_lst)[i], entrezID_lst[, ENSEMBL_ID_col])
-    out[i] <- entrezID_lst[, ENTREZ_ID_col][position]
-  }
-  
-  # Closing the parallel sockets
-  parallel::stopCluster(cl = clust)
-  
-  # Closing the function with assigning the new object and naming it
-  out_lst <- cbind(DE_lst, entrezIDs)
-  
-  # This new if statment allows the user to specify a new object anme, but could just go with the standard nameing
-  # the function uses
-  if(is.na(new_object_name)) {
-    original_name <- deparse(substitute(DE_lst))
-    output_name <- paste0(original_name, "_", "entrezIDs")
-  } else {
-    output_name <- new_object_name
-  }
-  
-  assign(output_name, out_lst, envir = .GlobalEnv)
-  message("The gene name matched dataframe was assigned to a new object named:", "\n", output_name)
-}
+# I will combine the gene name and the ENTREZ ID DE lists by feeding the gene name list into the 
+# ENTREZ ID matching function for the cluster DEG list
 entrezID_matching_par_V2 = function (DE_lst, entrezID_lst, ENSEMBL_ID_col, ENTREZ_ID_col, n_cores = 2, new_object_name = NA,
                                      DE_lst_IDs_are_rows = TRUE, DE_lst_IDs = NULL) {
   # Initializing the progress bar
@@ -2941,87 +2817,8 @@ entrezID_matching_par_V2 = function (DE_lst, entrezID_lst, ENSEMBL_ID_col, ENTRE
   assign(output_name, out_lst, envir = .GlobalEnv)
   message("The gene name matched dataframe was assigned to a new object named:", "\n", output_name)
 }
-
-# NOTE: this version is less time intensive (runs under 5 minutes) as it runs the process on multiple cores in parallel, however
-# it relies on on a foreach "loop" which is more complicated then a simple for loop
-
-
-# Attaching entrezIDs to the cluster DEG list
-entrezID_matching_par_V2(DE_Cluster_0v1, unifiedEntrezIDs, "ensembl_gene_id", "entrezgene_id", n_cores = 5, new_object_name = "DE_Cluster_0v1_entrezIDs")
-head(DE_Cluster_0v1_entrezIDs)
-
-
-# Attaching entrezIDs to the treatment cycle DEG list
-entrezID_matching_par_V2(DE_lst = DE_TreatmentCycles_0v1, entrezID_lst = unifiedEntrezIDs, ENSEMBL_ID_col = "ensembl_gene_id",
-                         ENTREZ_ID_col = "entrezgene_id", n_cores = 5, new_object_name = "DE_TreatmentCycles_entrezIDs")
-head(DE_TreatmentCycles_entrezIDs)
-
-
-# I will combine the gene name and the ENTREZ ID DE lists by feeding the gene name list into the 
-# ENTREZ ID matching function for the cluster DEG list
 entrezID_matching_par_V2(DE_Cluster_0v1_geneNames, unifiedEntrezIDs, "ensembl_gene_id", "entrezgene_id", n_cores = 5, new_object_name = "DE_Cluster_0v1_geneNames_entrezIDs")
 head(DE_Cluster_0v1_geneNames_entrezIDs)
-
-
-# I will combine the gene name and the ENTREZ ID DE lists by feeding the gene name list into the 
-# ENTREZ ID matching function for the treatment cycle DEG list
-entrezID_matching_par_V2(DE_lst = DE_TreatmentCycles_0v1_geneNames, entrezID_lst = unifiedEntrezIDs, ENSEMBL_ID_col = "ensembl_gene_id",
-                         ENTREZ_ID_col = "entrezgene_id", n_cores = 5, new_object_name = "DE_TreatmentCycles_0v1_geneNames_entrezIDs")
-head(DE_TreatmentCycles_0v1_geneNames_entrezIDs)
-
-
-# Save the raw generated ENSEMBL, ENTREZ ID and gene name (SYMBOL) containing table (no additional modifications)
-write_csv(x = DE_Cluster_0v1_geneNames_entrezIDs, file = paste0(analysis_dir, "/", "DEG_clusters_0v1_raw", script_version, ".csv"))
-
-
-# Save the raw generated ENSEMBL, ENTREZ ID and gene name (SYMBOL) containing table (no additional modifications)
-write_csv(x = DE_TreatmentCycles_0v1_geneNames_entrezIDs, file = paste0(analysis_dir, "/", "DEG_treatment_cycles_raw", script_version, ".csv"))
-
-
-# Remove unnecessary variables
-rm(ensembl, datasets, attributes, filters, entrezIDs, dropped_IDs, dropped_IDs_df, missing_entrezIDs, entrezIDs_p2)
-
-
-
-
-
-## Check if the two DE lists are significantly different using Fisher's exact test
-## NOTE: the H0 here is that the two lists are significantly different from each other
-
-
-# Construct the empty contingency list
-DE_lst_contingency_t <- matrix(nrow = 2, ncol = 2)
-colnames(DE_lst_contingency_t) <- c("in_cluster_lst", "not_in_cluster_lst")
-rownames(DE_lst_contingency_t) <- c("in_cycle_lst", "not_in_cycle_lst")
-print(DE_lst_contingency_t)
-
-
-# Calculated the number of detected genes not found in either of the lists
-not_in_either <- unif_gene_names$ensembl_gene_id[!unif_gene_names$ensembl_gene_id %in% rownames(DE_Cluster_0v1_geneNames_entrezIDs)]
-not_in_either <- not_in_either[!not_in_either %in% rownames(DE_TreatmentCycles_0v1_geneNames_entrezIDs)]
-
-
-# Fill the list with the appropriate counts based on similarities and differences
-DE_lst_contingency_t[1, 1] <- as.numeric(summary(rownames(DE_Cluster_0v1_geneNames_entrezIDs) %in% rownames(DE_TreatmentCycles_0v1_geneNames_entrezIDs))[3])
-DE_lst_contingency_t[1, 2] <- as.numeric(summary(rownames(DE_Cluster_0v1_geneNames_entrezIDs) %in% rownames(DE_TreatmentCycles_0v1_geneNames_entrezIDs))[2])
-DE_lst_contingency_t[2, 1] <- as.numeric(summary(rownames(DE_TreatmentCycles_0v1_geneNames_entrezIDs) %in% rownames(DE_Cluster_0v1_geneNames_entrezIDs))[2])
-DE_lst_contingency_t[2, 2] <- length(not_in_either)
-print(DE_lst_contingency_t)
-
-
-# Conduct Fisher's exact test and capture the nice table result for saving
-DE_lists_similarity_test <- capture.output(print(fisher.test(DE_lst_contingency_t)))
-print(DE_lists_similarity_test)
-
-
-# Save the results as .txt
-write_lines(DE_lists_similarity_test, file = paste0(analysis_dir, "/", "TreatmentCycel_vs_Cluster_DEG_similarity_test", script_version, ".txt"))
-
-
-# Remove unnecessary variables
-rm(DE_TreatmentCycles, DE_TreatmentCycles_0v1, DE_TreatmentCycles_0v1_geneNames,
-   DE_TreatmentCycles_0v1_entrezIDs, DE_TreatmentCycles_0v1_geneNames_entrezIDs,
-   DE_lst_contingency_t, DE_lists_similarity_test)
 
 
 
@@ -3036,7 +2833,7 @@ DE_Cluster_0v1_geneNames_entrezIDs$ExprChange <- ifelse(DE_Cluster_0v1_geneNames
                                                         ifelse(DE_Cluster_0v1_geneNames_entrezIDs$avg_log2FC <= 0 & DE_Cluster_0v1_geneNames_entrezIDs$p_val_adj <= 0.05, "Downregulated", "Not significant"))
 
 # NOTE: the ranking here will be solely based on the p_adj value (as the sign() function will turn all log2FC into a negative, 0 or positive 1)
-# if you don't want that (which we want to do here) you can omit the sign() function
+# if you don't want that you can omit the sign() function
 DE_Cluster_0v1_geneNames_entrezIDs$Ranking <- DE_Cluster_0v1_geneNames_entrezIDs$avg_log2FC * (-log10(DE_Cluster_0v1_geneNames_entrezIDs$p_val_adj))
 
 
@@ -3080,76 +2877,26 @@ rm(DE_Cluster_0v1, DE_Cluster_0v1_entrezIDs, DE_Cluster_0v1_geneNames, DE_Cluste
 
 
 # Load the DEG list if not loaded yet
-if (!exists(x = "DEG_cluster_0v1_clean", where = .GlobalEnv) || !exists(x = "DEG_cluster_0v1_symbols_clean", where = .GlobalEnv)) {
-  DEG_cluster_0v1_clean <- read.csv(file = paste0(analysis_dir, "/", "DEG_clusters_0v1_clean", script_version, ".csv"))
+if (!exists(x = "DEG_cluster_0v1_symbols_clean", where = .GlobalEnv)) {
   DEG_cluster_0v1_symbols_clean <- read.csv(file = paste0(analysis_dir, "/", "DEG_clusters_0v1_symbols_clean", script_version, ".csv"))
   message("The clean DEG lists were loaded under the names: ", deparse(substitute(DE_Cluster_0v1_geneNames_entrezIDs)), " and ", deparse(substitute(DE_Cluster_0v1_geneNames_entrezIDs)))
 }
 
 
-# Annotated visualization with ggplot2 for entrezIDs
-DEG_cluster_0v1_clean$Significance <- ifelse(DEG_cluster_0v1_clean$avg_log2FC > 1 & DEG_cluster_0v1_clean$p_val_adj < 0.05, "Upregulated",
-                                             ifelse(DEG_cluster_0v1_clean$avg_log2FC < -1 & DEG_cluster_0v1_clean$p_val_adj < 0.05, "Downregulated", "Not significant")) #labeling genes for coloring
-upreg <- DEG_cluster_0v1_clean[DEG_cluster_0v1_clean$Significance == "Upregulated", ] #sub-setting the upregulated genes
-topupreg <- head(upreg$entrezIDs[order(upreg$p_val_adj)], 10) #selecting the top upreg genes
-downreg <- DEG_cluster_0v1_clean[DEG_cluster_0v1_clean$Significance == "Downregulated", ] #sub-setting the downregulated genes
-topdownreg <- head(downreg$entrezIDs[order(downreg$p_val_adj)], 10) #selecting the top downreg genes
-
-
-#top50upreg <- head(DEG_cluster_0v1_clean$geneName[order(DEG_cluster_0v1_clean$p_val_adj)], 50) #choosing the top 50 differentially expressed genes
-DEG_cluster_0v1_clean$DElabel <- ifelse(DEG_cluster_0v1_clean$entrezIDs %in% topupreg | DEG_cluster_0v1_clean$entrezIDs %in% topdownreg,
-                                        DEG_cluster_0v1_clean$entrezIDs, NA) #marking the top DEGs in the dataframe
-
-volcano_p <- ggplot(data = DEG_cluster_0v1_clean, 
-                    aes(x = avg_log2FC, y = -log10(p_val_adj), col = Significance, label = DElabel)) +
-  geom_point() +
-  geom_point(data = subset(DEG_cluster_0v1_clean, !is.na(DElabel)),
-             shape = 21, color = "black", stroke = 0.5) +
-  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
-  geom_vline(xintercept = 1, linetype = "dashed") +
-  geom_vline(xintercept = -1, linetype = "dashed") +
-  scale_color_manual(values = cluster_colors[c(2, 5, 3)],
-                     labels = c("Downregulated", "Not significant", "Upregulated")) +
-  scale_x_continuous(limits = c(-13, 13), breaks = seq(-13, 13, 1)) +
-  scale_y_continuous(limits = c(0, 14), breaks = seq(0, 10, 2)) +
-  labs(color = "Expression status", x = expression("log"[2] * "FC"), y = expression("-log"[10] * "p-value")) +
-  ggtitle("Differentially expressed genes - entrezIDs") +
-  geom_text_repel(show.legend = FALSE, max.overlaps = Inf) +
-  theme_classic() +
-  theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
-print(volcano_p)
-
-ggsave(filename = paste0("DEGs_Volcano_plot_entrezIDs", script_version, ".png"), volcano_p,
-       device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
-rm(volcano_p)
-
-
-# Construct an upreg-downreg df of entrezIDs for saving
-topupreg <- head(upreg$entrezIDs[order(upreg$p_val_adj)], 20) #selecting the top upreg genes
-topdownreg <- head(downreg$entrezIDs[order(downreg$p_val_adj)], 20) #selecting the top downreg genes
-top_upreg_and_downreg_DEGs <- data.frame(top_upregulated = topupreg, top_downregulated = topdownreg)
-
-
-# Save the upreg-downreg df of entrezIDs
-write_csv(x = top_upreg_and_downreg_DEGs, file = paste0(analysis_dir, "/", "top_upreg_and_downreg_DEGs_entrez", script_version, ".csv"))
-
-
 # Annotated visualization with ggplot2 for geneNames
-DEG_cluster_0v1_symbols_clean$Significance <- ifelse(DEG_cluster_0v1_symbols_clean $avg_log2FC > 1 & DEG_cluster_0v1_symbols_clean $p_val_adj < 0.05, "Upregulated",
-                                                     ifelse(DEG_cluster_0v1_symbols_clean $avg_log2FC < -1 & DEG_cluster_0v1_symbols_clean $p_val_adj < 0.05, "Downregulated", "Not significant")) #labeling genes for coloring
-upreg <- DEG_cluster_0v1_symbols_clean [DEG_cluster_0v1_symbols_clean $Significance == "Upregulated", ] #sub-setting the upregulated genes
-topupreg <- head(dplyr::arrange(upreg, desc(avg_log2FC))$geneNames, 15) #selecting the top upreg genes
-downreg <- DEG_cluster_0v1_symbols_clean [DEG_cluster_0v1_symbols_clean $Significance == "Downregulated", ] #sub-setting the downregulated genes
-topdownreg <- head(dplyr::arrange(downreg, avg_log2FC)$geneNames, 15) #selecting the top downreg genes
+DEG_cluster_0v1_symbols_clean$Significance <- ifelse(DEG_cluster_0v1_symbols_clean$avg_log2FC > 1 & DEG_cluster_0v1_symbols_clean$p_val_adj < 0.05, "Upregulated",
+                                                     ifelse(DEG_cluster_0v1_symbols_clean$avg_log2FC < -1 & DEG_cluster_0v1_symbols_clean$p_val_adj < 0.05, "Downregulated", "Not significant")) #labeling genes for coloring
+upreg <- DEG_cluster_0v1_symbols_clean[DEG_cluster_0v1_symbols_clean$Significance == "Upregulated", ] #sub-setting the upregulated genes
+topupreg <- head(dplyr::arrange(upreg, desc(Ranking))$geneNames, 15) #selecting the top upreg genes
+downreg <- DEG_cluster_0v1_symbols_clean[DEG_cluster_0v1_symbols_clean$Significance == "Downregulated", ] #sub-setting the downregulated genes
+topdownreg <- head(dplyr::arrange(downreg, Ranking)$geneNames, 15) #selecting the top downreg genes
 
-
-#top50upreg <- head(DEG_cluster_0v1_symbols_clean $geneName[order(DEG_cluster_0v1_symbols_clean $p_val_adj)], 50) #choosing the top 50 differentially expressed genes
-DEG_cluster_0v1_symbols_clean$DElabel <- ifelse(DEG_cluster_0v1_symbols_clean$geneNames %in% topupreg | DEG_cluster_0v1_symbols_clean $geneNames %in% topdownreg,
+DEG_cluster_0v1_symbols_clean$DElabel <- ifelse(DEG_cluster_0v1_symbols_clean$geneNames %in% topupreg | DEG_cluster_0v1_symbols_clean$geneNames %in% topdownreg,
                                                 DEG_cluster_0v1_symbols_clean$geneNames, NA) #marking the top DEGs in the dataframe
 
 volcano_p <- ggplot(data = DEG_cluster_0v1_symbols_clean , 
                     aes(x = avg_log2FC, y = -log10(p_val_adj), col = Significance, label = DElabel)) +
-  geom_point() +
+  geom_point(size = 3, alpha = 0.5) +
   geom_point(data = subset(DEG_cluster_0v1_symbols_clean, !is.na(DElabel)),
              shape = 21, color = "black", stroke = 0.5) +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
@@ -3157,17 +2904,18 @@ volcano_p <- ggplot(data = DEG_cluster_0v1_symbols_clean ,
   geom_vline(xintercept = -1, linetype = "dashed") +
   scale_color_manual(values = cluster_colors[c(2, 5, 3)],
                      labels = c("Downregulated", "Not significant", "Upregulated")) +
-  scale_x_continuous(limits = c(-13, 13), breaks = seq(-13, 13, 1)) +
+  scale_x_continuous(limits = c(-22, 22), breaks = seq(-22, 22, 2)) +
   scale_y_continuous(limits = c(0, 8), breaks = seq(0, 8, 2)) +
   labs(color = "Expression status", x = expression("log"[2] * "FC"), y = expression("-log"[10] * "p-value")) +
-  ggtitle("Differentially expressed genes - geneNames") +
-  geom_text_repel(show.legend = FALSE, max.overlaps = Inf, color = "black") +
+  #ggtitle("Differentially expressed genes - geneNames") +
+  geom_text_repel(show.legend = FALSE, max.overlaps = Inf, color = "black", size = 5) +
   theme_classic() +
-  theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+  theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
 print(volcano_p)
 
 ggsave(filename = paste0("DEGs_Volcano_plot_symbols", script_version, ".png"), volcano_p,
-       device = "png", path = paste0(analysis_dir, "/", "Plots/"), units = "px", dpi = 320)
+       device = "png", path = paste0(analysis_dir, "/", "Plots/"),
+       width = 4800, height = 2400, units = "px", dpi = 320)
 rm(volcano_p)
 
 # Construct an upreg-downreg df of gene names for saving
@@ -3454,7 +3202,8 @@ run_serial_visualization = function(integrated_irGSEA_list, plotting_function = 
         output_list[[element]] <- irGSEA::irGSEA.heatmap(object = integrated_irGSEA_list[[element]], top = n_show,
                                                          cluster.color = cluster_color, direction.color = direction_color,
                                                          significance.color = significance_color, cluster_rows = clust_rows,
-                                                         method = plot_method)
+                                                         method = plot_method, heatmap.width = unit(10, "npc"), heatmap.heigh = unit(10, "npc"),
+                                                         rowname.fointsize = 15)
         
       } else if (plotting_function == "barplot") {
         
@@ -3522,10 +3271,20 @@ save_irGSEA_plots = function(irGSEA_plot_list, directory, filename) {
     progressBar$tick()
     
     ggsave(filename = paste0(filename, "_", names(irGSEA_plot_list)[element], script_version, ".png"), device = "png", path = directory, plot = irGSEA_plot_list[[element]],
-           units = "px", dpi = 320)
+      width = 5000, height = 3000, units = "px", dpi = 320)
     
   }
   
+  
+}
+
+
+
+
+## Load the irGSEA results if not present
+save_dir <- paste0(getwd(), "/", analysis_dir, "/", "GSEA_results")
+if (!exists("irGSEA_sct_lst", where = .GlobalEnv)) {
+  irGSEA_sct_lst <- load_irGSEA_list(directory = save_dir, pattern = ".rds")
   
 }
 
@@ -3551,15 +3310,7 @@ irGSEA_sct_lst <- run_serial_irGSEA(seurat_obj = sct_CTC.obj, seurat_assay = "SC
 
 
 # Save the resulting irGSEA list
-save_dir <- paste0(getwd(), "/", analysis_dir, "/", "GSEA_results")
 save_irGSEA_list(irGSEA_list = irGSEA_sct_lst, directory = save_dir, filename = "irGSEA")
-
-
-# Load the irGSEA results if not present
-if (!exists("irGSEA_sct_lst", where = .GlobalEnv)) {
-  irGSEA_sct_lst <- load_irGSEA_list(directory = save_dir, pattern = ".rds")
-  
-}
 
 
 # Run the hub gene analysis to find the hub genes for the interesting pathways
@@ -3580,7 +3331,7 @@ irGSEA_sct_lst_integrated <- run_serial_integration(irGSEA_list = irGSEA_sct_lst
 # Plot the integrated irGSEA results
 cluster_colors <- pal_tron(palette = "legacy")(7)
 
-irGSEA_dotplots <- run_serial_visualization(integrated_irGSEA_list = irGSEA_sct_lst_integrated[c(1, 4, 7, 10)], plotting_function = "heatmap", cluster_color = cluster_colors[c(6, 5)],
+irGSEA_dotplots <- run_serial_visualization(integrated_irGSEA_list = irGSEA_sct_lst_integrated, plotting_function = "heatmap", cluster_color = cluster_colors[c(6, 5)],
                                             n_show = 10, clust_rows = TRUE, plot_method = "RRA")
 
 
@@ -3670,14 +3421,15 @@ hub_DEGs_p <- ggplot(data = filter(hub_DEGs, ExprChange != "Not significant"), a
   scale_x_continuous(limits = c(-5, 10), breaks = seq(-5, 10, 2.5)) +
   scale_fill_gradient(low = "#6EE2FFFF", high = "#F7C530FF", limits = c(-5, 10))+
   labs(fill = expression(""), x = expression("log"[2] * "FC"), y = expression("Gene symbols")) +
-  ggtitle("Hub-gene expression in Cluster 0 vs Cluster 1") +
+  #ggtitle("Hub-gene expression in Cluster 0 vs Cluster 1") +
   theme_classic() +
-  theme(legend.position = "none", plot.title = element_text(hjust = 0.5), text = element_text(size = 18))
+  theme(legend.position = "none", plot.title = element_text(hjust = 0.5), text = element_text(size = 24))
 print(hub_DEGs_p)
 
 
 ggsave(filename = paste0("Hub-gene_expression_in_Cluster_0_vs_Cluster_1", script_version, ".png"), hub_DEGs_p,
-       device = "png", path = paste0(analysis_dir, "/", "GSEA_results/", "Plots/"), units = "px", dpi = 320)
+       device = "png", path = paste0(analysis_dir, "/", "GSEA_results/", "Plots/"),
+       width = 2000, height = 2500, units = "px", dpi = 320)
 rm(hub_DEGs_p)
 
 #################################################################   End Section  ##################################################################
@@ -3685,919 +3437,4 @@ rm(hub_DEGs_p)
 ##############################################################################################################################################################################
 ################################################################   This is the end of the analysis for now  ##################################################################
 ##############################################################################################################################################################################
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-ggplot(sct_CTC_meta_df,
-       aes(x = Treatment, fill = seurat_clusters,)) +
-    #geom_jitter(width = 0.5, height = 0.5) +
-    geom_bar(color = "black", position = "dodge") +
-    #geom_pwc() +
-    #facet_wrap(vars(RealCycle)) +
-    theme_classic()
-
-
-ggplot(sct_CTC_meta_df,
-       aes(x = Treatment, y = after_stat(count), fill = seurat_clusters,)) +
-    #geom_jitter(width = 0.5, height = 0.5) +
-    geom_col(color = "black", position = "dodge") +
-    #geom_pwc() +
-    #facet_wrap(vars(RealCycle)) +
-    theme_classic()
-
-
-
-
-
-
-treatment_summary <- data.frame(Treatment_type = )
-
-
-
-
-
-
-
-
-
-
-
-
-c25 <- c(
-    "dodgerblue2", "#E31A1C", # red
-    "green4",
-    "#6A3D9A", # purple
-    "#FF7F00", # orange
-    "black", "gold1",
-    "skyblue2", "#FB9A99", # lt pink
-    "palegreen2",
-    "#CAB2D6", # lt purple
-    "#FDBF6F", # lt orange
-    "gray70", "khaki2",
-    "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
-    "darkturquoise", "green1", "yellow4", "yellow3",
-    "darkorange4", "brown"
-)
-
-
-
-
-
-ggplot(sct_CTC_meta_df,
-       aes(x = seurat_clusters, fill = patients,)) +
-    #geom_jitter(width = 0.5, height = 0.5) +
-    geom_bar(color = "black", position = "dodge") +
-    scale_fill_manual(values = c25) +
-    facet_wrap(vars(RealCycle)) +
-    theme_classic()
-
-ggplot(sct_CTC_meta_df,
-       aes(x = RealCycle, fill = patients,)) +
-    #geom_jitter(width = 0.5, height = 0.5) +
-    geom_bar(color = "black", position = "dodge") +
-    scale_fill_manual(values = c25) +
-    #facet_wrap(vars(seurat_clusters)) +
-    theme_classic()
-
-
-
-
-multi_cyc_pat <- dplyr::filter(sct_CTC_meta_df, patients == "ALM76C6003" | patients == "ALM78C7005" | patients == "LM67C6011" |
-                  patients == "ALM88C3002" | patients == "LM68C6005")
-
-cycle_labs <- c("Cycle 1", "Cycle 2", "Cycle 3")
-
-ggplot(multi_cyc_pat,
-       aes(x = seurat_clusters, fill = patients,)) +
-    #geom_jitter(width = 0.5, height = 0.5) +
-    geom_bar(color = "black", position = "dodge") +
-    scale_fill_startrek() +
-    #scale_fill_manual(values = c25) +
-    facet_wrap(vars(Treatment_cycle), strip.position = "bottom", labeller = "label_both") +
-    labs(fill = "Patients", x = expression("Clusters"), y = expression("Cell numbers")) +
-    ggtitle("CTC clusters - cell distribution based on the treatment cycles") +
-    #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
-    theme_classic() +
-    theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank())
-
-
-
-
-
-run_GSEA(DE_gene_list = GSEA_DE_logP_ranked_lst_ord,
-         verbose = TRUE,
-         min_size = 5,
-         max_size = 500,
-         p_val_cutoff = 0.05,
-         p_val_adjust_method = "BH",
-         GSEA_method = "fgsea",
-         ref_gene_lst = c2.cgp.v2023.1.Hs.symbols.gmt,
-         GSEA_csv_file_name = "test_file",
-         GSEA_result_object_name = "test_object",
-         plot_title = "test_plot",
-         plot_file_name = "test_plot",
-         save_folder = "GSEA_results")
-
-
-
-for (e in seq_along(reference_lst)) {
-    run_GSEA(DE_gene_list = GSEA_DE_ranked_lst_ord,
-             ref_gene_lst = get(reference_lst[e]),
-             GSEA_csv_file_name = paste0(pathway_names[e], "_", "GSEA", "_", "result"),
-             GSEA_result_object_name = paste0(pathway_names[e], "_", "GSEA", "_", "object"),
-             plot_title = paste0("GSEA", pathway_names[e], "set"),
-             plot_file_name = paste0(pathway_names[e], "_", "GSEA", "_", "plot"))
-    
-}
-
-
-
-
-#Running GSEA using the clusterProfiler package
-#the function uses permutation testing to adjust the p-values. as this is based on a random number, for the sake of
-#reproducibility, one should set the seed
-set.seed(1234)
-
-
-#Run GSEA on the hallmark dataset and save the result
-hallmark_gsea_res <- GSEA(geneList = GSEA_DE_ranked_lst_ord,
-                          minGSSize = 5,
-                          maxGSSize = 500,
-                          pvalueCutoff = 0.05,
-                          pAdjustMethod = "BH",
-                          TERM2GENE = h.all.v2023.1.Hs.symbols.gmt,
-                          by = "fgsea")
-
-hallmark_gsea_res_df <- as.data.frame(hallmark_gsea_res@result)
-write.csv(hallmark_gsea_res_df, file = paste0(script_version, "/", "GSEA_results/", "hallmark_set_GSEA", script_version, ".csv"))
-rm(hallmark_gsea_res_df)
-
-
-
-#this function will visualize the GSEA result and saves it as a .png
-print_and_save_gseaplot = function(gsea_result, plot_title, plot_file_name) {
-    for (e in 1:nrow(gsea_result@result)) {
-        #call the gseaplot function to plot the gsea result
-        gsea_res_p <- gseaplot(x = gsea_result,
-                               geneSetID = gsea_result@result[e,1],
-                               title = paste0(plot_title, "- ", gsea_result@result[e,1]))
-        #visualize the resulting plot
-        print(gsea_res_p)
-        
-        #saving the resulting plot as a .png
-        ggsave(filename = paste0(plot_file_name, "-", gsea_result@result[e,1], script_version, ".png"), gsea_res_p,
-               device = "png", path = paste0(script_version, "/", "GSEA_results", "/", "Plots", "/"),
-               width = 3500, height = 3000, units = "px")
-        
-    }
-    
-}
-print_and_save_gseaplot(hallmark_gsea_res, "GSEA hallmark set", "GSEA hallmark set")
-
-
-
-#Run GSEA on the hallmark dataset and save the result
-hallmark_gsea_res <- GSEA(geneList = GSEA_DE_ranked_lst_ord,
-                          minGSSize = 5,
-                          maxGSSize = 500,
-                          pvalueCutoff = 0.05,
-                          pAdjustMethod = "BH",
-                          TERM2GENE = h.all.v2023.1.Hs.symbols.gmt,
-                          by = "fgsea")
-
-hallmark_gsea_res_df <- as.data.frame(hallmark_gsea_res@result)
-write.csv(hallmark_gsea_res_df, file = paste0(script_version, "/", "GSEA_results/", "hallmark_set_GSEA", script_version, ".csv"))
-rm(hallmark_gsea_res_df)
-
-
-#this function will visualize the GSEA result and saves it as a .png
-print_and_save_gseaplot = function(gsea_result, plot_title, plot_file_name) {
-    for (e in 1:nrow(gsea_result@result)) {
-        #call the gseaplot function to plot the gsea result
-        gsea_res_p <- gseaplot(x = gsea_result,
-                               geneSetID = gsea_result@result[e,1],
-                               title = paste0(plot_title, "- ", gsea_result@result[e,1]))
-        #visualize the resulting plot
-        print(gsea_res_p)
-        
-        #saving the resulting plot as a .png
-        ggsave(filename = paste0(plot_file_name, "-", gsea_result@result[e,1], script_version, ".png"), gsea_res_p,
-               device = "png", path = paste0(script_version, "/", "GSEA_results", "/", "Plots", "/"),
-               width = 3500, height = 3000, units = "px")
-        
-    }
-    
-}
-
-print_and_save_gseaplot(hallmark_gsea_res, "GSEA hallmark set", "GSEA hallmark set")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-for (e in 1:nrow(hallmark_gsea_res@result)) {
-    h_gsea_res_p <- gseaplot(x = hallmark_gsea_res,
-                             geneSetID = hallmark_gsea_res@result[e,1],
-                             title = paste0("GSEA Hallmark set", "- ", hallmark_gsea_res@result[e,1]))
-    print(h_gsea_res_p)
-    ggsave(filename = paste0("GSEA hallmark set", "-", hallmark_gsea_res@result[e,1], script_version, ".png"), h_gsea_res_p,
-           device = "png", path = paste0(script_version, "/", "GSEA_results", "/", "Plots", "/"),
-           width = 3500, height = 3000, units = "px")
-    
-}
-rm(h_gsea_res_p)
-
-
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-    
-
-
-
-
-
-
-
-
-test_GSEA <- fgsea(pathways = test_gmt,
-                   stats = DE_ranked_list_ord[1:1000],
-                   scoreType = "pos",
-                   minSize = 5,
-                   maxSize = 500,
-                   nproc = 2)
-
-dplyr::arrange(test_GSEA, padj)
-
-
-
-
-
-
-
-ranked_DE_lst <- DE_Cluster_0v1_geneNames
-head(ranked_DE_lst)
-ranked_DE_lst <- dplyr::arrange(ranked_DE_lst, Ranking)
-head(ranked_DE_lst)
-
-
-
-
-ggplot(sct_CTC_meta_df,
-       aes(x = RealCycle, fill = seurat_clusters,)) +
-    geom_bar(color = "black") +
-    geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5, position = position_dodge(width = 0.9)) +
-    #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
-    scale_fill_tron(labels = c("Cluster 0", "Cluster 1")) +
-    labs(fill = "CTC cluster", x = expression("Treatment cycle"), y = expression("Cell number")) +
-    facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
-    theme_classic() +
-    theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-          strip.text = element_blank())
-
-
-ggplot(cell_numbers_summary_df,
-       aes(x = Cycles, y = as.integer(Cell_percent_c0), fill = cluster_colors[6])) +
-    geom_col(color = "black") +
-    geom_text(aes(label = as.integer(Cell_percent_c0)), vjust = -0.5, position = position_dodge(width = 0.9)) +
-    scale_y_continuous(limits = c(0,100), breaks = c(0, 20, 40, 60, 80, 100)) +
-    #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
-    scale_fill_manual(values = cluster_colors[6], label = "Cluster 0") +
-    labs(fill = "CTC cluster", x = expression("Treatment cycle"), y = expression("Cell number percentages")) +
-    #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
-    theme_classic() +
-    theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-          strip.text = element_blank())
-
-ggplot(cell_numbers_summary_df,
-       aes(x = Cycles, y = as.integer(Cell_percent_c1), fill = cluster_colors[7])) +
-    geom_col(color = "black") +
-    geom_text(aes(label = as.integer(Cell_percent_c1)), vjust = -0.5, position = position_dodge(width = 0.9)) +
-    scale_y_continuous(limits = c(0,100), breaks = c(0, 20, 40, 60, 80, 100)) +
-    #scale_x_discrete(labels = c("Double positive","EpCAM positive","PSMA positive")) +
-    scale_fill_manual(values = cluster_colors[7], label = "Cluster 0") +
-    labs(fill = "CTC cluster", x = expression("Treatment cycle"), y = expression("Cell number percentages")) +
-    #facet_wrap(vars(seurat_clusters), strip.position = "bottom") +
-    theme_classic() +
-    theme(plot.title = element_text(hjust = 0.5), strip.background = element_blank(),
-          strip.text = element_blank())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-##NetGSA
-
-
-#NetGSA uses a count matrix for the gene set analysis, so I extracted the sct-transformed count matrix from the
-#seurat object and substracetd the rows present in the DE gene list
-#extracting the transformed count matrix from the seurat object for the NetGSA analysis
-sct_count_matrix <- GetAssayData(sct_CTC.obj, layer = "data")
-
-#adjusting the count matrix to contain the DE_lst genes
-
-# Replace the row names with ENSEMBL IDs
-rownames(DE_Cluster_0v1_geneNames_entrezIDs) <- rownames(DE_Cluster_0v1)
-
-#Clean up the dataframe by removing the missing entrezIDs 
-DE_cluster_0v1_GNID_clean <- DE_Cluster_0v1_geneNames_entrezIDs[!is.na(DE_Cluster_0v1_geneNames_entrezIDs$entrezIDs), ]
-
-#First fix the duplication issue
-#NOTE: in the case of the duplicated entrezIDs, I double checked the genes and one of the ID is assigned wrong
-#therefore I will fix the aforementioned ID
-summary(duplicated(DE_cluster_0v1_GNID_clean$entrezIDs))
-DE_cluster_0v1_GNID_clean[duplicated(DE_cluster_0v1_GNID_clean$entrezIDs), ]
-DEG_cluster_0v1_clean$entrezIDs[duplicated(DEG_cluster_0v1_clean$entrezIDs)]
-dplyr::filter(DEG_cluster_0v1_clean, entrezIDs == DEG_cluster_0v1_clean$entrezIDs[duplicated(DEG_cluster_0v1_clean$entrezIDs)][1])
-
-#Replace the duplicated IDs
-DE_cluster_0v1_GNID_clean["ENSG00000205571", "entrezIDs"] <- "6607"
-DE_cluster_0v1_GNID_clean["ENSG00000117262", "entrezIDs"] <- "653519"
-DE_cluster_0v1_GNID_clean["ENSG00000223572", "entrezIDs"] <- "548596"
-DE_cluster_0v1_GNID_clean["ENSG00000196873", "entrezIDs"] <- "445571"
-DE_cluster_0v1_GNID_clean["ENSG00000228696", "entrezIDs"] <- "100506084"
-DE_cluster_0v1_GNID_clean["ENSG00000197172", "entrezIDs"] <- "4105"
-
-
-# Create the data matrix (net_matrix) by subsetting the count matrix to hold the DEGs
-net_matrix <- sct_count_matrix[rownames(sct_count_matrix) %in% rownames(DE_cluster_0v1_GNID_clean), ]
-rm(sct_count_matrix)
-
-
-# Replace the rwo names with the entrezIDs 
-rownames(net_matrix) <- DE_cluster_0v1_GNID_clean$entrezIDs
-
-
-# Add the ENTREZID identifier in forn of the rownames to get the proper data matrix format
-net_matrix@Dimnames[[1]] <- str_c("ENTREZID:", net_matrix@Dimnames[[1]])
-head(rownames(net_matrix))
-net_matrix_2 <- as.matrix(net_matrix)
-
-
-#setting up the grouping variable, in this case the cluster numbers
-net_group <- as.character(sct_CTC.obj@meta.data$seurat_clusters)
-table(net_group)
-
-
-#getting the edges
-edge_list <- netgsa::obtainEdgeList(genes = rownames(net_matrix), databases = c("kegg", "reactome", "pathbank", "panther", "pharmgkb", "smpdb"))
-
-
-#Prepare the adjecency matrix needed for the netGSA run
-adj_matrix <- netgsa::prepareAdjMat(x = net_matrix_inp, group = net_group, databases = edge_list, cluster = FALSE)
-
-
-net_matrix_inp <- glmnet::makeX(train = as.data.frame(net_matrix_2), na.impute = TRUE, sparse = FALSE)
-
-
-
-
-
-
-kegg_pathways <- OmnipathR::kegg_pathway_list()
-kegg_pathways_down <- OmnipathR::kegg_pathways_download()
-unique(kegg_pathways_down$pathway_id)
-
-kegg_collection <- psf::generate.kegg.collection(pathway.id.list = unique(kegg_pathways_down$pathway_id), out.dir = paste0(analysis_dir, "/", "KEGG_pathways"))
-
-entrez_fc_matrix <- as.matrix(DEG_cluster_0v1_clean$avg_log2FC)
-rownames(entrez_fc_matrix) <- rownames(DEG_cluster_0v1_clean)
-
-
-psf_results <- psf::run_psf(entrez.fc = entrez_fc_matrix, kegg.collection = kegg_collection, calculate.significance = TRUE, bst.steps = 500,
-    shuffling_mode = "global", split = TRUE, ncores = 4)
-psf_processed <- psf::process.psf.results(psf_results)
-
-psf::generate_psf_report(psf_list = psf_results, folder_name = paste0(analysis_dir, "/", "PSF"), plot_type = "kegg", log_norm = TRUE)
-glimpse(psf_results["MAPK signaling pathway"])
-psf_results[["MAPK signaling pathway"]][["sink.nodes"]]
-psf_results[["MAPK signaling pathway"]][["psf_activities"]]
-
-
-psf::calc_psf_and_generate_report_from_collection(kegg_collection = kegg_collection, exp_matrix = entrez_fc_matrix, folder_name = paste0(analysis_dir, "/", "PSF"),
-    calculate_significance = TRUE)
-
-
-kegg_collection[["MAPK signaling pathway"]]
-kegg_collection[[1]]
-
-
-
-#try again with this setup...
-net_matrix <- matrix(ncol = ncol(sct_count_matrix), nrow = nrow(DE_Cluster_0v1_geneNames))
-cut_sct_m <- sct_count_matrix[rownames(sct_count_matrix) %in% rownames(DE_Cluster_0v1_geneNames), ]
-
-rownames(net_matrix) <- rownames(cut_sct_m)
-colnames(net_matrix) <- colnames(sct_count_matrix)
-
-for(e in 1:ncol(net_matrix)) {
-    net_matrix[, e] <- rep(colnames(net_matrix)[e], nrow(net_matrix))
-}
-
-
-
-progressBar <- progress_bar$new(format = "(:spin) [:bar] :percent [Elapsed time: :elapsedfull || Estimated time remaining: :eta]",
-                                total = nrow(net_matrix),
-                                complete = "=",
-                                incomplete = "-",
-                                current = ">",
-                                clear = FALSE,
-                                width = 100)
-
-
-net_matrix2 <- matrix(ncol = ncol(net_matrix), nrow = nrow(net_matrix))
-for (e in 1:ncol(net_matrix)) {
-    for (i in 1:nrow(net_matrix)) {
-        progressBar$tick()
-        net_matrix2[i, e] <- as.numeric(net_matrix[i, e]) 
-    }
-}
-
-net_matrix2 <- GeneCountTable
-net_matrix2$geneID <- NULL
-net_matrix2 <- net_matrix2[rownames(net_matrix2) %in% rownames(DE_Cluster_0v1_geneNames), ]
-net_matrix2 <- net_matrix2[, colnames(net_matrix2) %in% colnames(net_matrix)]
-
-net_matrix2 <- data.matrix(net_matrix2[1:109])
-net_mat <- Matrix::Matrix(net_matrix2, sparse = TRUE)
-net_mat2 <- na.omit(net_mat[1:1000, ])
-
-glmnet::glmnet(net_mat, net_group)
-
-
-net_matrix2 <- glmnet::makeX(net_matrix2)
-net_mat <- glmnet::makeX(net_matrix)
-    
-
-
-
-
-net_mat@Dimnames[[1]] <- str_c("ENSEMBL:", net_mat@Dimnames[[1]])
-head(rownames(net_mat))
-
-
-
-
-
-
-
-
-net_mat <- DEG_cluster_0v1_clean
-net_mat$entrezIDs[742] <- "6607"
-rownames(net_mat) <- net_mat$entrezIDs
-rownames(net_mat) <- str_c("ENTREZID:", rownames(net_mat))
-net_mat
-
-net_mat <- glmnet::makeX(net_mat, na.impute = TRUE)
-
-
-net_matrix_3 <- as.data.frame(net_matrix_2)
-net_matrix_3 <- glmnet::makeX(net_matrix_3, na.impute = TRUE)
-
-#setting up the grouping variable, in this case the cluster numbers
-net_group <- as.numeric(sct_CTC.obj@meta.data$seurat_clusters)
-table(net_group)
-
-
-#getting the edges
-edges <- netgsa::obtainEdgeList(genes = rownames(net_matrix_3), databases = c("kegg", "reactome"))
-rownames(net_matrix_3)[1088] <- "ENTREZID:6607"
-
-
-
-
-
-net_adjMat <- netgsa::prepareAdjMat(x = net_matrix_3[1:1000, ], group = net_group)
-
-
-
-
-
-
-
-
-
-
-
-#converting the ENSEMBL IDs to ENTREZ IDs as the NetGSA algorythm has a problem working with ENSEMBL IDs
-entrezID <- getBM(attributes = c("ensembl_gene_id","entrezgene_id", "external_gene_name"),
-                  filters = "ensembl_gene_id",
-                  values = rownames(DE_Cluster_0v1_geneNames),
-                  mart = ensembl_connection)
-
-
-#the conversion is not perfect as the ENSEMBL IDS contain IDs for pseudogenes, so the missing entrezIDs will be removed
-entrezID_filt <- entrezID[!is.na(entrezID$entrezgene_id), ]
-
-
-#subsetting the net_matrix and the DE_gene list based on the remaining IDs
-net_matrix <- net_matrix[rownames(net_matrix) %in% entrezID_filt$ensembl_gene_id, ]
-DE_Cluster_0v1_geneNames_filt <- DE_Cluster_0v1_geneNames[rownames(DE_Cluster_0v1_geneNames) %in% entrezID_filt$ensembl_gene_id, ]
-
-
-#Re-defining the top upregulatd genes after the filtering
-DE_Cluster_0v1_geneNames_filt$Significance <- ifelse(DE_Cluster_0v1_geneNames_filt$avg_log2FC > 0 & DE_Cluster_0v1_geneNames_filt$p_val_adj < 0.05, "Upregulated",
-                                                ifelse(DE_Cluster_0v1_geneNames_filt$avg_log2FC < 0 & DE_Cluster_0v1_geneNames_filt$p_val_adj < 0.05, "Downregulated", "Not significant")) #labeling genes for coloring
-upreg_filt <- DE_Cluster_0v1_geneNames_filt[DE_Cluster_0v1_geneNames_filt$Significance == "Upregulated", ] #subsetting the upregulated genes
-topupreg_filt <- head(upreg_filt$geneName[order(upreg_filt$p_val_adj)], 10) #selecting the top upreg genes
-downreg_filt <- DE_Cluster_0v1_geneNames_filt[DE_Cluster_0v1_geneNames_filt$Significance == "Downregulated", ] #subsetting the downregulated genes
-topdownreg_filt <- head(downreg_filt$geneName[order(downreg_filt$p_val_adj)], 10) #selecting the top downreg genes
-
-
-top50upreg_filt <- head(DE_Cluster_0v1_geneNames_filt$geneName[order(DE_Cluster_0v1_geneNames_filt$p_val_adj)], 50) #choosing the top 50 differentially expressed genes
-DE_Cluster_0v1_geneNames_filt$DElabel <- ifelse(DE_Cluster_0v1_geneNames_filt$geneNames %in% topupreg_filt | DE_Cluster_0v1_geneNames_filt$geneNames %in% topdownreg_filt, DE_Cluster_0v1_geneNames_filt$geneNames, NA) #marking the top DEGs in the dataframe
-
-
-#plotting the new DE_gene list
-volcano_p <- ggplot(data = DE_Cluster_0v1_geneNames_filt, 
-                    aes(x = avg_log2FC, y = -log10(p_val_adj), col = Significance, label = DElabel)) +
-    geom_point() +
-    geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
-    scale_color_manual(values = cluster_colors[c(2, 5, 3)],
-                       labels = c("Downregulated", "Not significant", "Upregulated")) +
-    scale_x_continuous(limits = c(-10, 10), breaks = seq(-10, 10, 2)) +
-    scale_y_continuous(limits = c(0, 14), breaks = seq(0, 14, 2)) +
-    labs(color = "Expression status", x = expression("log"[2]*"FC"), y = expression("-log"[10]*"p-value")) +
-    ggtitle("Differentially expressed genes - filtered for the NetGSA analysis") +
-    geom_text_repel(show.legend = FALSE ,max.overlaps = Inf) +
-    theme_classic() +
-    theme(plot.title = element_text(hjust = 0.5))
-print(volcano_p)
-
-ggsave(filename = paste0("NetGSA_filtered_DEGs_Volcano_plot_gb", script_version, ".png"), volcano_p,
-       device = "png", path = paste0(script_version, "/", "Plots/"),
-       width = 3500, height = 3000, units = "px")
-rm(volcano_p, upreg, downreg, topupreg, topdownreg)
-
-
-
-
-
-
-
-
-#adjusting the rwonames of the net_matrix to fit the requirements of the NetGSA (it has to contain what kid of ID the name is based on,
-#in this case it is ENSEMBL ID so one must add ENSEMBL: in fornt of each ID)
-rownames(net_matrix) <- str_c("ENSEMBL:", rownames(net_matrix))
-head(rownames(net_matrix))
-
-#Adding the sample names as colnames for the sake of easier identification
-colnames(net_matrix) <- colnames(sct_CTC.obj)
-head(colnames(net_matrix))
-
-
-#setting up the frouping variable, in this case the cluster numbers
-net_group <- as.numeric(sct_CTC.obj@meta.data$seurat_clusters)
-table(net_group)
-
-
-#getting the edges
-edges <- netgsa::obtainEdgeList(genes = rownames(net_matrix), databases = c("kegg", "reactome"))
-
-net_adjMat <- prepareAdjMat(x = net_matrix[1:1000, ], group = net_group)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-upreg <- DE_Cluster_0v1_geneNames[-log10(DE_Cluster_0v1$p_val_adj) >= 1.3 & DE_Cluster_0v1$avg_log2FC >= 1,]
-upreg <- upreg[is.na(upreg$geneNames) == FALSE, ]
-downreg <- DE_Cluster_0v1_geneNames[-log10(DE_Cluster_0v1$p_val_adj) >= 1.3 & DE_Cluster_0v1$avg_log2FC <= -1,]
-downreg <- downreg[is.na(downreg$geneNames) == FALSE, ]
-
-write_csv(upreg, "Alpha_volcano_full_upreg_Cl0vs1.csv")
-write_csv(downreg, "Alpha_volcano_full_downreg_Cl0vs1.csv")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
